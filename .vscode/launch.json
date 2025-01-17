@@ -1,0 +1,34 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "example tools",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/example_tools.py",
+      "console": "integratedTerminal",
+      "args": [
+      ],
+      "justMyCode": false,
+    },
+    {
+      "name": "example conv",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/example_conv.py",
+      "console": "integratedTerminal",
+      "args": [
+      ],
+      "justMyCode": false,
+    },
+    {
+      "name": "example oneshot",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/example_oneshot.py",
+      "console": "integratedTerminal",
+      "args": [],
+      "justMyCode": false,
+    }
+  ]
+}

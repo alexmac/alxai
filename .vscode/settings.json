@@ -1,0 +1,62 @@
+{
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "editor.wordWrap": "on",
+  "editor.fontLigatures": "'ss02', 'zero'",
+  "debug.toolBarLocation": "commandCenter",
+  "coverage-gutters.coverageReportFileName": "output/coverage/index.html",
+  "coverage-gutters.coverageBaseDir": "output/coverage",
+  "coverage-gutters.coverageFileNames": [
+    "coverage.xml"
+  ],
+  "Prettier-SQL.commaPosition": "before",
+  "Prettier-SQL.denseOperators": false,
+  "Prettier-SQL.expressionWidth": 120,
+  "Prettier-SQL.indentStyle": "standard",
+  "Prettier-SQL.keywordCase": "lower",
+  "Prettier-SQL.linesBetweenQueries": 1,
+  "Prettier-SQL.logicalOperatorNewline": "before",
+  "Prettier-SQL.newlineBeforeSemicolon": false,
+  "Prettier-SQL.SQLFlavourOverride": "postgresql",
+  "Prettier-SQL.tabulateAlias": true,
+  "ruff.nativeServer": true,
+  "html.suggest.html5": true,
+  "python.analysis.typeCheckingMode": "basic",
+  "python.testing.pytestArgs": [
+    "tests"
+  ],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit",
+    }
+  },
+  "[json]": {
+    "editor.quickSuggestions": {
+      "strings": true
+    },
+    "editor.suggest.insertMode": "replace",
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit",
+    }
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[html]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+}

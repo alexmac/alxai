@@ -1,0 +1,47 @@
+[project]
+name = "alxai"
+version = "0.1.0"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["aiohttp~=3.9", "alxhttp", "tenacity", "openai"]
+dev-dependencies = [
+  "black",
+  "isort",
+  "pytest",
+  "pytest-cov",
+  "pytest-mock",
+  "ruff",
+  "twine",
+]
+
+[tool.ruff]
+line-length = 200
+indent-width = 2
+cache-dir = "output/.ruff_cache"
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+log_file_level = "INFO"
+log_file = "output/pytest/logs.txt"
+log_file_format = "%(asctime)s [%(levelname)8s] [%(name)s] %(message)s (%(filename)s:%(lineno)s)"
+addopts = "-vv --cov=alxum --cov=tests --cov-report=html --cov-report=term --cov-report=xml"
+testpaths = ["tests", "integration"]
+filterwarnings = ["ignore:.*`json_encoders` is deprecated.*"]
+cache_dir = "output/pytest/cache"
+
+[tool.coverage.run]
+branch = true
+data_file = "output/coverage/.coverage"
+
+[tool.coverage.html]
+directory = "output/coverage"
+
+[tool.coverage.xml]
+output = "output/coverage/coverage.xml"
+
+[tool.pyright]
+ignore = ["output"]
