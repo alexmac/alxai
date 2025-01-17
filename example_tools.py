@@ -26,7 +26,10 @@ class LinearEquationSolver(ToolExecutor):
     arguments = LinearEquation.model_validate(arguments)
     log = logging.getLogger()
     log.info(f'Solving {arguments.equation} with x={arguments.x} and y={arguments.y}')
+
+    # ☠️☠️☠️
     result = eval(arguments.equation, {'x': arguments.x, 'y': arguments.y})
+    # ☠️☠️☠️
 
     if result == 0:
       msg = 'Correct! The result is 0'
