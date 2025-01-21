@@ -25,7 +25,7 @@ def get_schema(t: ToolExecutor) -> Dict[str, Any]:
   return schema
 
 
-def get_tool_descriptions(tools: Sequence[ToolExecutor] | NotGiven) -> List[ChatCompletionToolParam] | NotGiven:
+def get_tool_descriptions(tools: Sequence[ToolExecutor] | NotGiven | None) -> List[ChatCompletionToolParam] | NotGiven:
   if not tools or tools is NOT_GIVEN:
     return NOT_GIVEN
   oai_tool_descriptions = [ChatCompletionToolParam(type='function', function=FunctionDefinition(name=t.name, strict=True, description=t.description, parameters=get_schema(t))) for t in tools]

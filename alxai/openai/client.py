@@ -16,15 +16,15 @@ class OpenAIConfig(pydantic.BaseModel):
 
 home_dir = os.path.expanduser('~')
 
-_config: OpenAIConfig | None = None
+_configs: Dict[str, OpenAIConfig] = {}
 
 
-def _get_config() -> OpenAIConfig:
-  global _config
-  if not _config:
-    with open(os.path.join(home_dir, '.open_ai/config.json')) as f:
-      _config = OpenAIConfig.model_validate_json(f.read())
-  return _config
+def _get_config(cfg: str = 'open_ai') -> OpenAIConfig:
+  global _configs
+  if not _configs.get(cfg):
+    with open(os.path.join(home_dir, f'.{cfg}/config.json')) as f:
+      _configs[cfg] = OpenAIConfig.model_validate_json(f.read())
+  return _configs[cfg]
 
 
 def get_openai_client(org: str | None = None) -> openai.AsyncOpenAI:
@@ -33,6 +33,15 @@ def get_openai_client(org: str | None = None) -> openai.AsyncOpenAI:
     org = list(cfg.orgs.keys())[0]
 
   return openai.AsyncOpenAI(api_key=cfg.orgs[org].secret, organization=org)
+
+
+def get_deepseek_client(org: str | None = None) -> openai.AsyncOpenAI:
+  cfg = _get_config('deepseek')
+  if not org:
+    org = list(cfg.orgs.keys())[0]
+
+  print(cfg.orgs[org].secret)
+  return openai.AsyncOpenAI(api_key=cfg.orgs[org].secret, base_url='https://api.deepseek.com')
 
 
 async def get_embedding(oai: openai.AsyncOpenAI, json_data):

@@ -12,7 +12,6 @@ from uuid import UUID
 from openai import NOT_GIVEN, AsyncOpenAI, NotGiven
 from openai.types.chat import ChatCompletionAssistantMessageParam, ChatCompletionMessageParam, ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam, ParsedChatCompletionMessage
 from openai.types.chat.chat_completion_content_part_text_param import ChatCompletionContentPartTextParam
-from pydantic import BaseModel
 
 from alxai.openai.tool import ToolExecutor, get_tool_descriptions
 
@@ -137,7 +136,7 @@ class Conv:
     nc = self.clone(msgs)
     if msg_handler:
       nc.msg_handler = msg_handler
-    if response_format:
+    if response_format is not None:
       nc.response_format = response_format
     return nc
 
@@ -154,11 +153,17 @@ class Conv:
   async def run(self) -> None:
     await self._before()
 
+    response_format = self.response_format
     if self.model == 'o1-mini':
-      self.response_format = NOT_GIVEN
+      response_format = NOT_GIVEN
+
+    model = self.model
+    if 'deepseek' in str(self.client.base_url):
+      print('Using DeepSeek model')
+      model = 'deepseek-reasoner'
 
     response = await self.client.beta.chat.completions.parse(
-      model=self.model, messages=self.messages, response_format=self.response_format, tools=get_tool_descriptions(self.tools), temperature=self.temperature
+      model=model, messages=self.messages, response_format=response_format, tools=get_tool_descriptions(self.tools), temperature=self.temperature
     )
     choice = response.choices[0]
     assert choice
@@ -218,7 +223,7 @@ async def start_conv(
     _conv_id=conv_id or uuid.uuid4(),
     _listener_msg_idx=listener_msg_idx,
     _listener=listener or (DefaultConvListener(log) if debug else None),
-    response_format=response_format or NOT_GIVEN,
+    response_format=response_format if response_format is not None else NOT_GIVEN,
     tools=tools or NOT_GIVEN,
   )
   await c.run()
@@ -227,7 +232,7 @@ async def start_conv(
 async def oneshot_conv[ResponseType](
   client: AsyncOpenAI,
   messages: List[ChatCompletionMessageParam],
-  response_format: Type[ResponseType],
+  response_format: Type[ResponseType] | None = None,
   tools: List[ToolExecutor] | NotGiven | None = None,
   sem: Optional[asyncio.Semaphore] = None,
   log: Optional[Logger] = None,
@@ -238,7 +243,7 @@ async def oneshot_conv[ResponseType](
   listener_msg_idx: int = 0,
   listener: Optional[ConvListener] = None,
   debug: bool = True,
-) -> ResponseType | None:
+) -> ResponseType | str | None:
   log = log or logging.getLogger()
 
   result = {}
@@ -249,8 +254,10 @@ async def oneshot_conv[ResponseType](
       if txt.startswith('```json'):
         txt = txt[7:-3]
       txt = txt.strip()
-      assert isinstance(response_format, BaseModel)
-      result['output'] = response_format.model_validate_json(txt)
+      if response_format is not None and response_format != NOT_GIVEN:
+        result['output'] = response_format.model_validate_json(txt)  # type: ignore
+      else:
+        result['output'] = txt
     else:
       result['output'] = message.parsed
 
@@ -266,7 +273,7 @@ async def oneshot_conv[ResponseType](
     _conv_id=conv_id or uuid.uuid4(),
     _listener_msg_idx=listener_msg_idx,
     _listener=listener or (DefaultConvListener(log) if debug else None),
-    response_format=response_format or NOT_GIVEN,
+    response_format=response_format if response_format is not None else NOT_GIVEN,
     tools=tools or NOT_GIVEN,
   )
   await c.run()

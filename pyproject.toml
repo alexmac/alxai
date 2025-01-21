@@ -3,7 +3,13 @@ name = "alxai"
 version = "0.1.0"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["aiohttp~=3.9", "alxhttp", "tenacity", "openai"]
+dependencies = [
+    "aiohttp~=3.9",
+    "alxhttp",
+    "tenacity",
+    "openai",
+    "pandas>=2.2.3",
+]
 dev-dependencies = [
   "black",
   "isort",
