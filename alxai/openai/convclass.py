@@ -14,6 +14,7 @@ from openai.types.chat import ChatCompletionAssistantMessageParam, ChatCompletio
 from openai.types.chat.chat_completion_content_part_text_param import ChatCompletionContentPartTextParam
 from openai.types.chat.chat_completion_reasoning_effort import ChatCompletionReasoningEffort
 
+from alxai.openai.conv import debug_dict
 from alxai.openai.tool import ToolExecutor, get_tool_descriptions
 
 
@@ -66,10 +67,22 @@ class DefaultConvListener(ConvListener):
 
   def before_run(self, conv_id: UUID, msgs: List[ChatCompletionMessageParam]) -> None:
     for msg in msgs:
-      self.log.info(f'{msg["role"]}: {msg.get("content")}')
+      self.log.info(f'{msg["role"]}: {msg.get("content", "")[:80]}...')
+      debug_dict(
+        {
+          'role': msg['role'],
+          'content': msg.get('content'),
+        }
+      )
 
   def after_run(self, conv_id: UUID, msg: ParsedChatCompletionMessage) -> None:
-    self.log.info(f'{msg.role}: {msg.content}')
+    self.log.info(f'{msg.role}: {msg.content[:80]}...')
+    debug_dict(
+      {
+        'role': msg.role,
+        'content': msg.content,
+      }
+    )
 
 
 @dataclass(kw_only=True)

@@ -2,12 +2,13 @@ import asyncio
 import copy
 import json
 import logging
+import os
 import uuid
 from abc import abstractmethod
 from dataclasses import dataclass
 from logging import Logger
 from time import time
-from typing import Awaitable, Callable, List, Optional, Type
+from typing import Awaitable, Callable, Dict, List, Optional, Type
 from uuid import UUID
 
 from openai import NOT_GIVEN, AsyncOpenAI, NotGiven
@@ -73,6 +74,20 @@ class ConvListener:
     pass
 
 
+DEBUG_RUN_ID = uuid.uuid4()
+DEBUG_COUNTER = 0
+
+
+def debug_dict(msg: Dict | str):
+  global DEBUG_COUNTER
+  DEBUG_COUNTER += 1
+  os.makedirs(f'output/debug/{DEBUG_RUN_ID}', exist_ok=True)
+  with open(f'output/debug/{DEBUG_RUN_ID}/{DEBUG_COUNTER}.json', 'w') as f:
+    if isinstance(msg, dict):
+      msg = json.dumps(msg, indent=2)
+    f.write(msg)
+
+
 class DefaultConvListener(ConvListener):
   def __init__(self, log: Logger):
     super().__init__(log)
@@ -81,11 +96,24 @@ class DefaultConvListener(ConvListener):
   def before_run(self, conv_id: UUID, msgs: List[ChatCompletionMessageParam]) -> None:
     self.start_time = time()
     for msg in msgs:
-      self.log.info(f'{msg["role"]}: {msg.get("content")}')
+      debug_dict(
+        {
+          'role': msg['role'],
+          'content': msg.get('content'),
+        }
+      )
+      # self.log.info(f'{msg["role"]}: {msg.get("content")}')
 
   def after_run(self, conv_id: UUID, msg: ParsedChatCompletionMessage) -> None:
     time_taken = time() - self.start_time
-    self.log.info(f'{msg.role}: {msg.content} (took {time_taken:.2f}s)')
+    # self.log.info(f'{msg.role}: {msg.content} (took {time_taken:.2f}s)')
+    debug_dict(
+      {
+        'role': msg.role,
+        'content': msg.content,
+        'time_taken': time_taken,
+      }
+    )
 
 
 @dataclass

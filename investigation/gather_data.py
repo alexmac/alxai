@@ -64,6 +64,4 @@ Respond with a JSON object that conforms to the JSON schema {json.dumps(AWSCliTo
 # Commands run so far
 {investigation.summarize_files()}"""
 
-  print(prompt)
-
   await GatherData(client=client, messages=[usermsg(prompt)], investigation=investigation, model='o1-mini', response_format=AWSCliToolArguments).run()
