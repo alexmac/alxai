@@ -43,15 +43,17 @@ class GatherData(InvestigationConv):
 
 
 async def gather_naabu(client, investigation: Investigation):
-  docs = '\n'.join([f'- aws {pair}\n```\n{docoutput}\n```' for pair, docoutput in investigation.docs.items()])
+  docs = '\n'.join([f'- {pair}\n```\n{docoutput}\n```' for pair, docoutput in investigation.docs.items()])
 
   prompt = f"""# Goal
 You are a cyber security, devops and infrastructure expert who focuses on conducting investigations into cloud infrastructure environments. You are tasked with using naabu to answer the following question: "{investigation.prompt}"
 
 # Approach
 - The command should do one very specific thing, do not try to merge tasks.
-- You can use the output from previously run commands as input to this cli command.
-- Some commands require ARNs, make sure to suggest commands that will find ARNs before commands that need to use them.
+- The input to naabu needs a hostname or ip address.
+- Do not call it with CIDR notation, it will not work.
+- Do not guess at IPs, they must come from the data you have gathered.
+- If you are unable to meet these criteria then respond with an empty JSON object.
 
 # Response
 Respond with a JSON object that conforms to the JSON schema {json.dumps(NaabuToolArguments.model_json_schema(), indent=2)}.

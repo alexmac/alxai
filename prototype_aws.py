@@ -11,7 +11,7 @@ from investigation.summarize_result import summarize_result
 
 
 async def prototype_aws(client, log):
-  prompt = 'Find my EC2 instances and do a port scan against their internal IPs'
+  prompt = 'Find my running EC2 instances and do a port scan against their internal IPs'
   # prompt = 'list all of the certificates used by my load balancers and show me when they expire'
   investigation = Investigation(prompt=prompt)
 
@@ -28,6 +28,7 @@ async def prototype_aws(client, log):
       break
 
   result = await summarize_result(client, investigation)
+  investigation._save_master_index()
   print(f'\n\n\n### Final Summary:\n{result}')
 
 

@@ -27,5 +27,6 @@ You are tasked with answering the following question from a user based on all of
     model='o1-mini',
   )
   assert response is not None
+  investigation.master_index.final_summary = response
 
   return response

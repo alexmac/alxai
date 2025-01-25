@@ -45,8 +45,14 @@ def generate_html_for_investigation(investigation_dir):
     html_content.append(f'<p class="font-bold">{entry.reason_created}</p>')
 
     if entry.file_summary:
-      html_content.append(f'<p class="text-sm text-gray-500">{entry.file_summary}</p>')
+      html_content.append(f'<p class="text-sm text-gray-500 whitespace-pre-wrap">{entry.file_summary}</p>')
 
+    html_content.append('</div>')
+
+  if investigation.final_summary:
+    html_content.append('<div class="p-4 border rounded-lg shadow bg-white">')
+    html_content.append('<p class="font-bold">Final Summary</p>')
+    html_content.append(f'<p class="text-sm text-gray-500 whitespace-pre-wrap">{investigation.final_summary}</p>')
     html_content.append('</div>')
 
   html_content.append('</div>')

@@ -22,6 +22,7 @@ class FileMetadata(BaseModel):
 
 class MasterIndex(BaseModel):
   prompt: str
+  final_summary: Optional[str] = None
   files: Dict[str, FileMetadata] = Field(default_factory=dict)
 
 
@@ -31,7 +32,7 @@ async def summarize_file(client, reason: str, filepath: Path) -> str:
 
   prompt = f"""Here is the output of an AWS cli invocation. {reason}.
 
-  Your goal is to pull out the most important bits of information so that you can respond with a short paragraph explaining what the data shows.
+  Your goal is to pull out the most important bits of information so that you can respond with a short paragraph explaining what the data shows. If helpful use whitespace to make the output more readable.
 
   {content}
   """
