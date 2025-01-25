@@ -49,6 +49,7 @@ class Investigation:
   def __init__(self, prompt: str, directory: Optional[str] = None):
     self.prompt = prompt
     self.docs: Dict[str, str] = {}
+    self.final_summary: Optional[str] = None
     if directory:
       self.dir = Path(directory)
       if not self.dir.exists():
@@ -58,6 +59,7 @@ class Investigation:
     self.master_index_path = self.dir / 'master_index.json'
     if self.master_index_path.exists():
       self.master_index = MasterIndex.model_validate_json(self.master_index_path.read_text())
+      self.final_summary = self.master_index.final_summary
     else:
       self.master_index = MasterIndex(prompt=self.prompt)
       self._save_master_index()
