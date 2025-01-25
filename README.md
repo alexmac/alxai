@@ -1,9 +1,11 @@
 # Usage
 
-# Setup your venv
+# Setup your virtual env
 
 - Install uv (https://github.com/astral-sh/uv?tab=readme-ov-file#installation)
 - run "uv sync"
+
+- brew install ansifilter
 
 # Setup OpenAI API key
 

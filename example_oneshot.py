@@ -31,7 +31,7 @@ async def main():
       response_format=TaskProposals,
       model='gpt-4o-mini',
     )
-    if tasks:
+    if isinstance(tasks, TaskProposals):
       log.info(f'Tasks: {tasks.model_dump_json(indent=2)}')
 
 

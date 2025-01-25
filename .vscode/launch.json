@@ -29,6 +29,15 @@
       "console": "integratedTerminal",
       "args": [],
       "justMyCode": false,
+    },
+    {
+      "name": "prototype aws",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/prototype_aws.py",
+      "console": "integratedTerminal",
+      "args": [],
+      "justMyCode": false,
     }
   ]
 }

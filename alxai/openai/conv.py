@@ -6,12 +6,14 @@ import uuid
 from abc import abstractmethod
 from dataclasses import dataclass
 from logging import Logger
+from time import time
 from typing import Awaitable, Callable, List, Optional, Type
 from uuid import UUID
 
 from openai import NOT_GIVEN, AsyncOpenAI, NotGiven
 from openai.types.chat import ChatCompletionAssistantMessageParam, ChatCompletionMessageParam, ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam, ParsedChatCompletionMessage
 from openai.types.chat.chat_completion_content_part_text_param import ChatCompletionContentPartTextParam
+from openai.types.chat.chat_completion_reasoning_effort import ChatCompletionReasoningEffort
 
 from alxai.openai.tool import ToolExecutor, get_tool_descriptions
 
@@ -74,13 +76,16 @@ class ConvListener:
 class DefaultConvListener(ConvListener):
   def __init__(self, log: Logger):
     super().__init__(log)
+    self.start_time: float = 0
 
   def before_run(self, conv_id: UUID, msgs: List[ChatCompletionMessageParam]) -> None:
+    self.start_time = time()
     for msg in msgs:
       self.log.info(f'{msg["role"]}: {msg.get("content")}')
 
   def after_run(self, conv_id: UUID, msg: ParsedChatCompletionMessage) -> None:
-    self.log.info(f'{msg.role}: {msg.content}')
+    time_taken = time() - self.start_time
+    self.log.info(f'{msg.role}: {msg.content} (took {time_taken:.2f}s)')
 
 
 @dataclass
@@ -96,6 +101,7 @@ class Conv:
   temperature: float | NotGiven
   response_format: Type | NotGiven
   msg_failure_handler: MsgFailureHandler = default_msg_failure_handler
+  reasoning_effort: ChatCompletionReasoningEffort = 'medium'
   _listener_msg_idx: int = 0
   _listener: Optional[ConvListener] = None
 
@@ -107,6 +113,7 @@ class Conv:
       _sem=self._sem,
       _log=self._log,
       model=self.model,
+      reasoning_effort=self.reasoning_effort,
       temperature=self.temperature,
       msg_failure_handler=self.msg_failure_handler,
       _conv_id=self._conv_id,
@@ -150,20 +157,40 @@ class Conv:
       self._listener.after_run(self._conv_id, msg)
       self._listener_msg_idx = len(self.messages)
 
+  async def get_parsed_response[T](self, message: ParsedChatCompletionMessage, response_format: Type[T] | None) -> T | str | None:
+    if message.parsed is None:
+      txt = message.content or ''
+      if txt.startswith('```json'):
+        txt = txt[7:-3]
+      txt = txt.strip()
+      if response_format is not None and response_format != NOT_GIVEN:
+        return response_format.model_validate_json(txt)  # type: ignore
+      else:
+        return txt
+    else:
+      return message.parsed
+
   async def run(self) -> None:
     await self._before()
 
+    temperature = self.temperature or NOT_GIVEN
     response_format = self.response_format
+    model = self.model
+    reasoning_effort = NOT_GIVEN
+
     if self.model == 'o1-mini':
       response_format = NOT_GIVEN
-
-    model = self.model
-    if 'deepseek' in str(self.client.base_url):
+      temperature = NOT_GIVEN
+    elif model == 'o1':
+      reasoning_effort = self.reasoning_effort
+      temperature = NOT_GIVEN
+    elif 'deepseek' in str(self.client.base_url):
       print('Using DeepSeek model')
       model = 'deepseek-reasoner'
+      response_format = NOT_GIVEN
 
     response = await self.client.beta.chat.completions.parse(
-      model=model, messages=self.messages, response_format=response_format, tools=get_tool_descriptions(self.tools), temperature=self.temperature
+      model=model, messages=self.messages, reasoning_effort=reasoning_effort, response_format=response_format, tools=get_tool_descriptions(self.tools), temperature=temperature
     )
     choice = response.choices[0]
     assert choice
@@ -203,6 +230,7 @@ async def start_conv(
   log: Optional[Logger] = None,
   conv_id: Optional[UUID] = None,
   model: str = 'gpt-4o',
+  reasoning_effort: ChatCompletionReasoningEffort = 'medium',
   temperature: float | NotGiven = NOT_GIVEN,
   msg_failure_handler: MsgFailureHandler = default_msg_failure_handler,
   listener_msg_idx: int = 0,
@@ -218,6 +246,7 @@ async def start_conv(
     _sem=sem or asyncio.Semaphore(4),
     _log=log,
     model=model,
+    reasoning_effort=reasoning_effort,
     temperature=temperature,
     msg_failure_handler=msg_failure_handler,
     _conv_id=conv_id or uuid.uuid4(),
@@ -233,6 +262,7 @@ async def oneshot_conv[ResponseType](
   client: AsyncOpenAI,
   messages: List[ChatCompletionMessageParam],
   response_format: Type[ResponseType] | None = None,
+  reasoning_effort: ChatCompletionReasoningEffort = 'medium',
   tools: List[ToolExecutor] | NotGiven | None = None,
   sem: Optional[asyncio.Semaphore] = None,
   log: Optional[Logger] = None,
@@ -249,17 +279,7 @@ async def oneshot_conv[ResponseType](
   result = {}
 
   async def result_handler(conv: Conv, message: ParsedChatCompletionMessage[ResponseType]) -> None:
-    if message.parsed is None:
-      txt = message.content or ''
-      if txt.startswith('```json'):
-        txt = txt[7:-3]
-      txt = txt.strip()
-      if response_format is not None and response_format != NOT_GIVEN:
-        result['output'] = response_format.model_validate_json(txt)  # type: ignore
-      else:
-        result['output'] = txt
-    else:
-      result['output'] = message.parsed
+    result['output'] = await conv.get_parsed_response(message, response_format)
 
   c = Conv(
     client=client,
@@ -268,6 +288,7 @@ async def oneshot_conv[ResponseType](
     _sem=sem or asyncio.Semaphore(4),
     _log=log,
     model=model,
+    reasoning_effort=reasoning_effort,
     temperature=temperature,
     msg_failure_handler=msg_failure_handler,
     _conv_id=conv_id or uuid.uuid4(),

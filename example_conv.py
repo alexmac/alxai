@@ -25,10 +25,12 @@ class TaskDetail(BaseModel):
 
 async def response_handler(conv: Conv, message: ParsedChatCompletionMessage[TaskProposals]):
   user_response = input('Which task do you want more detail about? ')
-  return conv.respond(f'tell me more about task: {user_response}', response_format=TaskDetail, msg_handler=more_detail_handler)
+  return conv.respond(
+    f'tell me more about task: {user_response}. Respond with JSON conforming to the JSON schema {TaskDetail.model_json_schema()}.', response_format=TaskDetail, msg_handler=more_detail_handler
+  )
 
 
-async def more_detail_handler(conv: Conv, message: ParsedChatCompletionMessage[TaskProposals]):
+async def more_detail_handler(conv: Conv, message: ParsedChatCompletionMessage[TaskDetail]):
   log = logging.getLogger()
   assert message.parsed
   log.info(f'Detail: {message.parsed.model_dump_json(indent=2)}')
@@ -36,16 +38,20 @@ async def more_detail_handler(conv: Conv, message: ParsedChatCompletionMessage[T
 
 async def main():
   logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-  # httpx_log = logging.getLogger('httpx')
-  # httpx_log.setLevel(logging.WARNING)
+  httpx_log = logging.getLogger('httpx')
+  httpx_log.setLevel(logging.WARNING)
 
   async with get_openai_client() as client:
     await start_conv(
       client,
       response_handler,
-      [usermsg("""You are a cyber security expert. Propose five tasks that you would suggest doing to improve the posture of an organization. Respond with JSON.""")],
+      [
+        usermsg(
+          f"""You are a cyber security expert. Propose five tasks that you would suggest doing to improve the posture of an organization. Respond with JSON conforming to the JSON schema {TaskProposals.model_json_schema()}."""
+        )
+      ],
       response_format=TaskProposals,
-      model='gpt-4o-mini',
+      model='o1-mini',
     )
 
 

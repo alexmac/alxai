@@ -12,6 +12,7 @@ from uuid import UUID
 from openai import NOT_GIVEN, AsyncOpenAI
 from openai.types.chat import ChatCompletionAssistantMessageParam, ChatCompletionMessageParam, ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam, ParsedChatCompletionMessage
 from openai.types.chat.chat_completion_content_part_text_param import ChatCompletionContentPartTextParam
+from openai.types.chat.chat_completion_reasoning_effort import ChatCompletionReasoningEffort
 
 from alxai.openai.tool import ToolExecutor, get_tool_descriptions
 
@@ -82,6 +83,7 @@ class ConvClass[ResponseType]:
   model: str = 'gpt-4o-mini'
   temperature: float | None = None
   response_format: Type[ResponseType] | None = None
+  reasoning_effort: ChatCompletionReasoningEffort = 'low'
   _listener_msg_idx: int = 0
   _listener: Optional[ConvListener] = None
 
@@ -143,19 +145,25 @@ class ConvClass[ResponseType]:
   async def run(self) -> None:
     await self._before()
 
-    response_format = self.response_format
-    if self.model == 'o1-mini' or response_format is None:
-      response_format = NOT_GIVEN
-
-    temperature = self.temperature if self.temperature is not None else NOT_GIVEN
-
+    temperature = self.temperature or NOT_GIVEN
+    response_format = self.response_format or NOT_GIVEN
     model = self.model
-    if 'deepseek' in str(self.client.base_url):
+    reasoning_effort = NOT_GIVEN
+
+    if self.model == 'o1-mini':
+      response_format = NOT_GIVEN
+      temperature = NOT_GIVEN
+    elif model == 'o1':
+      reasoning_effort = self.reasoning_effort
+      temperature = NOT_GIVEN
+    elif 'deepseek' in str(self.client.base_url):
       print('Using DeepSeek model')
       model = 'deepseek-reasoner'
+      response_format = NOT_GIVEN
 
-    response = await self.client.beta.chat.completions.parse(model=model, messages=self.messages, response_format=response_format, tools=get_tool_descriptions(self.tools), temperature=temperature)
-    # response = await self.client.chat.completions.create(model=model, messages=self.messages, tools=get_tool_descriptions(self.tools), temperature=temperature)
+    response = await self.client.beta.chat.completions.parse(
+      model=model, messages=self.messages, reasoning_effort=reasoning_effort, response_format=response_format, tools=get_tool_descriptions(self.tools), temperature=temperature
+    )
     choice = response.choices[0]
     assert choice
     nc = self.respond_via_msg(parsedMsgToParam(choice.message))
