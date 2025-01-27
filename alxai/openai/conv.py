@@ -2,19 +2,17 @@ import asyncio
 import copy
 import json
 import logging
-import uuid
-from abc import abstractmethod
 from dataclasses import dataclass
 from logging import Logger
-from time import time
 from typing import Awaitable, Callable, List, Optional, Type
-from uuid import UUID
 
 from openai import NOT_GIVEN, AsyncOpenAI, NotGiven
 from openai.types.chat import ChatCompletionAssistantMessageParam, ChatCompletionMessageParam, ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam, ParsedChatCompletionMessage
 from openai.types.chat.chat_completion_content_part_text_param import ChatCompletionContentPartTextParam
 from openai.types.chat.chat_completion_reasoning_effort import ChatCompletionReasoningEffort
 
+from alxai.base.generic_conv import ConvClassBase, ConvID, ConvListener, generate_conv_id
+from alxai.openai.listeners import AgentPrintListener, DefaultConvListener
 from alxai.openai.tool import ToolExecutor, get_tool_descriptions
 
 type MsgFailureHandler = Callable[['Conv', str, ParsedChatCompletionMessage], Awaitable[Optional[Conv]]]
@@ -58,52 +56,22 @@ def parsedMsgToParam(msg: ParsedChatCompletionMessage):
   return ChatCompletionAssistantMessageParam(role=msg.role, content=msg.content, tool_calls=msg.tool_calls)  # type: ignore
 
 
-class ConvListener:
-  log: Logger
-
-  def __init__(self, log: Logger):
-    self.log: Logger = log
-
-  @abstractmethod
-  def before_run(self, conv_id: UUID, msgs: List[ChatCompletionMessageParam]) -> None:
-    pass
-
-  @abstractmethod
-  def after_run(self, conv_id: UUID, msg: ParsedChatCompletionMessage) -> None:
-    pass
-
-
-class DefaultConvListener(ConvListener):
-  def __init__(self, log: Logger):
-    super().__init__(log)
-    self.start_time: float = 0
-
-  def before_run(self, conv_id: UUID, msgs: List[ChatCompletionMessageParam]) -> None:
-    self.start_time = time()
-    for msg in msgs:
-      self.log.info(f'{msg["role"]}: {msg.get("content")}')
-
-  def after_run(self, conv_id: UUID, msg: ParsedChatCompletionMessage) -> None:
-    time_taken = time() - self.start_time
-    self.log.info(f'{msg.role}: {msg.content} (took {time_taken:.2f}s)')
-
-
 @dataclass
-class Conv:
+class Conv(ConvClassBase):
   client: AsyncOpenAI
   messages: List[ChatCompletionMessageParam]
   msg_handler: MsgHandler
   tools: List[ToolExecutor] | NotGiven
-  _sem: asyncio.Semaphore
-  _log: Logger
-  _conv_id: UUID
   model: str
   temperature: float | NotGiven
   response_format: Type | NotGiven
   msg_failure_handler: MsgFailureHandler = default_msg_failure_handler
   reasoning_effort: ChatCompletionReasoningEffort = 'medium'
-  _listener_msg_idx: int = 0
-  _listener: Optional[ConvListener] = None
+
+  def __post_init__(self):
+    if not self._listeners:
+      self._listeners.append(DefaultConvListener(self._log))
+      self._listeners.append(AgentPrintListener(self._log))
 
   def clone(self, msgs: List[ChatCompletionMessageParam]) -> 'Conv':
     return Conv(
@@ -118,7 +86,7 @@ class Conv:
       msg_failure_handler=self.msg_failure_handler,
       _conv_id=self._conv_id,
       _listener_msg_idx=self._listener_msg_idx,
-      _listener=self._listener,
+      _listeners=self._listeners,
       response_format=self.response_format,
       tools=self.tools,
     )
@@ -148,14 +116,14 @@ class Conv:
     return nc
 
   async def _before(self):
-    if self._listener:
-      self._listener.before_run(self._conv_id, self.messages[self._listener_msg_idx :])
-      self._listener_msg_idx = len(self.messages)
+    for listener in self._listeners:
+      listener.before_run(self._conv_id, self.messages[self._listener_msg_idx :])
+    self._listener_msg_idx = len(self.messages)
 
   async def _after(self, msg: ParsedChatCompletionMessage):
-    if self._listener:
-      self._listener.after_run(self._conv_id, msg)
-      self._listener_msg_idx = len(self.messages)
+    for listener in self._listeners:
+      listener.after_run(self._conv_id, msg)
+    self._listener_msg_idx = len(self.messages)
 
   async def get_parsed_response[T](self, message: ParsedChatCompletionMessage, response_format: Type[T] | None) -> T | str | None:
     if message.parsed is None:
@@ -178,14 +146,15 @@ class Conv:
     model = self.model
     reasoning_effort = NOT_GIVEN
 
-    if self.model == 'o1-mini':
+    if model == 'o1-mini':
       response_format = NOT_GIVEN
       temperature = NOT_GIVEN
     elif model == 'o1':
       reasoning_effort = self.reasoning_effort
       temperature = NOT_GIVEN
-    elif 'deepseek' in str(self.client.base_url):
-      print('Using DeepSeek model')
+
+    if 'deepseek' in str(self.client.base_url):
+      # print('Using DeepSeek model')
       model = 'deepseek-reasoner'
       response_format = NOT_GIVEN
 
@@ -228,13 +197,12 @@ async def start_conv(
   tools: List[ToolExecutor] | None = None,
   sem: Optional[asyncio.Semaphore] = None,
   log: Optional[Logger] = None,
-  conv_id: Optional[UUID] = None,
+  conv_id: Optional[ConvID] = None,
   model: str = 'gpt-4o',
   reasoning_effort: ChatCompletionReasoningEffort = 'medium',
   temperature: float | NotGiven = NOT_GIVEN,
   msg_failure_handler: MsgFailureHandler = default_msg_failure_handler,
-  listener_msg_idx: int = 0,
-  listener: Optional[ConvListener] = None,
+  listeners: Optional[List[ConvListener]] = None,
   response_format: Type | NotGiven | None = None,
   debug: bool = True,
 ):
@@ -249,9 +217,8 @@ async def start_conv(
     reasoning_effort=reasoning_effort,
     temperature=temperature,
     msg_failure_handler=msg_failure_handler,
-    _conv_id=conv_id or uuid.uuid4(),
-    _listener_msg_idx=listener_msg_idx,
-    _listener=listener or (DefaultConvListener(log) if debug else None),
+    _conv_id=conv_id or generate_conv_id(),
+    _listeners=listeners or [],
     response_format=response_format if response_format is not None else NOT_GIVEN,
     tools=tools or NOT_GIVEN,
   )
@@ -266,12 +233,11 @@ async def oneshot_conv[ResponseType](
   tools: List[ToolExecutor] | NotGiven | None = None,
   sem: Optional[asyncio.Semaphore] = None,
   log: Optional[Logger] = None,
-  conv_id: Optional[UUID] = None,
+  conv_id: Optional[ConvID] = None,
   model: str = 'gpt-4o',
   temperature: float | NotGiven = NOT_GIVEN,
   msg_failure_handler: MsgFailureHandler = default_msg_failure_handler,
-  listener_msg_idx: int = 0,
-  listener: Optional[ConvListener] = None,
+  listeners: Optional[List[ConvListener]] = None,
   debug: bool = True,
 ) -> ResponseType | str | None:
   log = log or logging.getLogger()
@@ -291,12 +257,56 @@ async def oneshot_conv[ResponseType](
     reasoning_effort=reasoning_effort,
     temperature=temperature,
     msg_failure_handler=msg_failure_handler,
-    _conv_id=conv_id or uuid.uuid4(),
-    _listener_msg_idx=listener_msg_idx,
-    _listener=listener or (DefaultConvListener(log) if debug else None),
+    _conv_id=conv_id or generate_conv_id(),
+    _listeners=listeners or [],
     response_format=response_format if response_format is not None else NOT_GIVEN,
     tools=tools or NOT_GIVEN,
   )
   await c.run()
 
   return result['output']
+
+
+async def structured_oneshot[ResponseType](
+  client: AsyncOpenAI,
+  messages: List[ChatCompletionMessageParam],
+  response_format: Type[ResponseType],
+  reasoning_effort: ChatCompletionReasoningEffort = 'medium',
+  tools: List[ToolExecutor] | NotGiven | None = None,
+  sem: Optional[asyncio.Semaphore] = None,
+  log: Optional[Logger] = None,
+  conv_id: Optional[ConvID] = None,
+  model: str = 'gpt-4o',
+  temperature: float | NotGiven = NOT_GIVEN,
+  msg_failure_handler: MsgFailureHandler = default_msg_failure_handler,
+  listeners: Optional[List[ConvListener]] = None,
+  debug: bool = True,
+) -> ResponseType:
+  log = log or logging.getLogger()
+
+  result = {}
+
+  async def result_handler(conv: Conv, message: ParsedChatCompletionMessage[ResponseType]) -> None:
+    result['output'] = await conv.get_parsed_response(message, response_format)
+
+  c = Conv(
+    client=client,
+    msg_handler=result_handler,
+    messages=messages,
+    _sem=sem or asyncio.Semaphore(4),
+    _log=log,
+    model=model,
+    reasoning_effort=reasoning_effort,
+    temperature=temperature,
+    msg_failure_handler=msg_failure_handler,
+    _conv_id=conv_id or generate_conv_id(),
+    _listeners=listeners or [],
+    response_format=response_format,
+    tools=tools or NOT_GIVEN,
+  )
+  await c.run()
+
+  if isinstance(result['output'], response_format):
+    return result['output']
+  else:
+    raise ValueError(f'Expected {response_format} but got {type(result["output"])}')

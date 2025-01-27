@@ -59,4 +59,7 @@
   "[html]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
+  "spellright.ignoreFiles": [
+    "**/output/**"
+  ]
 }

@@ -13,9 +13,8 @@ class ToolExecutor:
   description: str
   parameters: Type[BaseModel]
 
-  @classmethod
   @abstractmethod
-  async def invoke(cls, tool_id: str, arguments) -> ChatCompletionToolMessageParam:
+  async def invoke(self, tool_id: str, arguments) -> ChatCompletionToolMessageParam:
     pass
 
 

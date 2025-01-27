@@ -1,12 +1,14 @@
+import asyncio
 import datetime
 import json
+import os
 import random
 import string
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from alxai.openai.conv import oneshot_conv, usermsg
 from alxai.openai.convclass import ConvClass
@@ -18,23 +20,22 @@ class FileMetadata(BaseModel):
   reason_created: Optional[str] = None
   file_schema: Optional[Dict[str, Any]] = None
   file_summary: Optional[str] = None
-
-
-class MasterIndex(BaseModel):
-  prompt: str
-  files: Dict[str, FileMetadata] = Field(default_factory=dict)
+  command_args: Optional[list[str]] = None
 
 
 async def summarize_file(client, reason: str, filepath: Path) -> str:
   with open(filepath, 'r') as f:
     content = f.read()
 
-  prompt = f"""Here is the output of an AWS cli invocation. {reason}.
+  prompt = f"""# Task: Analyze this - {reason}
 
-  Your goal is to pull out the most important bits of information so that you can respond with a short paragraph explaining what the data shows.
+# Goal
+- extract the most relevant information to form a summary of what this output explains.
+- if the output describes certain objects then be sure to explain how many there are and what their ID/ARN is exactly
+- keep your summary concise. one paragraph with no formatting.
 
-  {content}
-  """
+# Full command output:
+{content}"""
 
   response = await oneshot_conv(client, [usermsg(prompt)], model='o1-mini')
 
@@ -42,42 +43,43 @@ async def summarize_file(client, reason: str, filepath: Path) -> str:
   return response
 
 
-class Investigation:
-  OUTPUT_DIR = Path('output/investigations')
+OUTPUT_DIR = Path('output/investigations')
 
-  def __init__(self, prompt: str, directory: Optional[str] = None):
-    self.prompt = prompt
-    self.docs: Dict[str, str] = {}
-    if directory:
-      self.dir = Path(directory)
-      if not self.dir.exists():
-        raise ValueError(f'Directory {directory} does not exist.')
-    else:
-      self.dir = self._create_random_directory()
-    self.master_index_path = self.dir / 'master_index.json'
-    if self.master_index_path.exists():
-      self.master_index = MasterIndex.model_validate_json(self.master_index_path.read_text())
-    else:
-      self.master_index = MasterIndex(prompt=self.prompt)
-      self._save_master_index()
 
-  def _create_random_directory(self) -> Path:
+class Investigation(BaseModel):
+  model_config = ConfigDict(arbitrary_types_allowed=True)
+  prompt: str
+  summary: str = ''
+  files: Dict[str, FileMetadata] = Field(default_factory=dict)
+  new_files: asyncio.Event = Field(default_factory=asyncio.Event, exclude=True)
+  done: asyncio.Event = Field(default_factory=asyncio.Event, exclude=True)
+  dir: Path = Field(exclude=True, default_factory=Path)
+  client: Any = Field(exclude=True, default=None)
+
+  @classmethod
+  def create(cls, prompt: str, client: Any = None):
+    investigation = cls(prompt=prompt, client=client)
+    investigation._create_random_directory()
+    investigation._save_master_index()
+    return investigation
+
+  def _create_random_directory(self):
     random_dir_name = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
 
-    date_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    date_str = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     dir_name = f'{date_str}_{random_dir_name}'
 
-    new_dir = self.OUTPUT_DIR / dir_name
-    new_dir.mkdir(parents=True, exist_ok=True)
-    return new_dir
+    self.dir = OUTPUT_DIR / dir_name
+    os.makedirs(self.dir, exist_ok=True)
 
   def _save_master_index(self):
-    with open(self.master_index_path, 'w') as f:
-      f.write(self.master_index.model_dump_json(indent=2))
+    master_index_path = self.dir / 'master_index.json'
+    with open(master_index_path, 'w') as f:
+      f.write(self.model_dump_json(indent=2))
 
   def summarize_files(self) -> str:
     summary = []
-    for file, metadata in self.master_index.files.items():
+    for file, metadata in self.files.items():
       if metadata.file_type == 'json':
         summary.append(f'- {metadata.reason_created}: {metadata.file_summary}')
       elif metadata.file_type == 'txt':
@@ -86,7 +88,7 @@ class Investigation:
 
   def file_dump(self) -> str:
     summary = []
-    for file, metadata in self.master_index.files.items():
+    for file, metadata in self.files.items():
       if metadata.file_type == 'json':
         with open(self.dir / file, 'r') as f:
           contents = json.load(f)
@@ -107,23 +109,17 @@ class Investigation:
     except json.JSONDecodeError:
       pass
 
+    print(f'🗄️ Adding file {filename} with type {file_type}')
+
     filename = f'{filename}.{file_type}'
     filepath = self.dir / filename
     with open(filepath, 'w') as f:
       f.write(content)
     metadata = FileMetadata(filename=filename, file_type=file_type, reason_created=reason, file_summary=await summarize_file(client, reason, filepath))
-    self.master_index.files[filename] = metadata
+    self.files[filename] = metadata
     self._save_master_index()
-
-  def add_json(self, data: Any, filename: Optional[str] = None, reason: Optional[str] = None):
-    filename = filename or f'data_{len(self.master_index.files) + 1}.json'
-    filepath = self.dir / filename
-    with open(filepath, 'w') as f:
-      json.dump(data, f, indent=4)
-    schema = list(data.keys()) if isinstance(data, dict) else None
-    metadata = FileMetadata(filename=filename, file_type='json', reason_created=reason, file_schema={'keys': schema} if schema else None)
-    self.master_index.files[filename] = metadata
-    self._save_master_index()
+    self.new_files.set()
+    self.new_files.clear()
 
 
 @dataclass(kw_only=True)

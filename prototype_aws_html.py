@@ -1,22 +1,6 @@
 from pathlib import Path
-from typing import Dict, Optional
-
-from pydantic import BaseModel
 
 from investigation.investigation import Investigation
-
-
-class FileEntry(BaseModel):
-  filename: str
-  file_type: str
-  reason_created: str
-  file_schema: Optional[str] = None
-  file_summary: Optional[str] = None
-
-
-class MasterIndex(BaseModel):
-  prompt: str
-  files: Dict[str, FileEntry]
 
 
 def generate_html_for_investigation(investigation_dir):
@@ -24,9 +8,7 @@ def generate_html_for_investigation(investigation_dir):
 
   # Read master index and parse with Pydantic
   with open(investigation_dir / 'master_index.json', 'r') as f:
-    master_index = MasterIndex.model_validate_json(f.read())
-
-  investigation = Investigation(master_index.prompt, investigation_dir)
+    investigation = Investigation.model_validate_json(f.read(), strict=False)
 
   html_content = [
     '<head>',
@@ -40,13 +22,19 @@ def generate_html_for_investigation(investigation_dir):
 
   html_content.append('<div class="space-y-4">')
 
-  for file_id, entry in master_index.files.items():
+  for file_id, entry in investigation.files.items():
     html_content.append('<div class="p-4 border rounded-lg shadow bg-white">')
     html_content.append(f'<p class="font-bold">{entry.reason_created}</p>')
 
     if entry.file_summary:
       html_content.append(f'<p class="text-sm text-gray-500">{entry.file_summary}</p>')
 
+    html_content.append('</div>')
+
+  if investigation.summary:
+    html_content.append('<div class="p-4 border rounded-lg shadow bg-white">')
+    html_content.append('<p class="font-bold">Summary</p>')
+    html_content.append(f'<p class="text-sm text-gray-500 whitespace-pre-wrap">{investigation.summary}</p>')
     html_content.append('</div>')
 
   html_content.append('</div>')
@@ -65,7 +53,8 @@ def main():
       # Start HTML document for each investigation
       html_parts = [
         '<!DOCTYPE html>',
-        '<html>',
+        '<html lang="en">',
+        '<meta charset="UTF-8">',
       ]
       html_parts.append(generate_html_for_investigation(investigation_dir))
       html_parts.extend(['</html>'])
