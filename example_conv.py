@@ -51,7 +51,7 @@ async def main():
         )
       ],
       response_format=TaskProposals,
-      model='o1-mini',
+      model='o3-mini',
     )
 
 

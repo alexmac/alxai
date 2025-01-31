@@ -92,13 +92,17 @@ class ConvClass[ResponseType](ConvClassBase):
     if model == 'o1-mini':
       response_format = NOT_GIVEN
       temperature = NOT_GIVEN
-    elif model == 'o1':
+    elif model == 'o1' or model == 'o3-mini':
       reasoning_effort = self.reasoning_effort
       temperature = NOT_GIVEN
 
     if 'deepseek' in str(self.client.base_url):
       # print('Using DeepSeek model')
       model = 'deepseek-reasoner'
+      response_format = NOT_GIVEN
+    elif 'perplexity' in str(self.client.base_url):
+      # print('Using Perplexity model')
+      model = 'sonar'
       response_format = NOT_GIVEN
 
     prev_role = None

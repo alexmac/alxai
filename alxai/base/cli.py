@@ -22,9 +22,9 @@ def invoke_cli(args: List[str], expect_first_arg: str = '', unquote: bool = True
   return subprocess.run(args, capture_output=True, text=True), args
 
 
-async def run_cli(args: List[str]) -> Tuple[str, List[str]]:
+async def run_cli(args: List[str], expect_first_arg: str = '') -> Tuple[str, List[str]]:
   try:
-    result, actual_args = invoke_cli(args)
+    result, actual_args = invoke_cli(args, expect_first_arg=expect_first_arg)
     retcode, stdout, stderr = result.returncode, result.stdout, result.stderr
   except Exception as e:
     raise CliError(f'Unknown Error: {e}')
