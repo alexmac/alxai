@@ -1,5 +1,9 @@
+from dataclasses import dataclass
+from typing import Any
+
+from alxai.listener_queue import ListenerQueue
 from alxai.openai.conv import oneshot_conv, usermsg
-from investigation.investigation import Investigation
+from investigation.investigation import FileMetadata, Investigation
 
 
 async def summarize_result(client, investigation: Investigation) -> str:
@@ -24,10 +28,19 @@ You are tasked with answering the following question from a user based on all of
   response = await oneshot_conv(
     client,
     [usermsg(prompt)],
-    model='o1-mini',
+    model='o3-mini',
   )
   assert response is not None
   investigation.summary = response
   investigation._save_master_index()
 
   return response
+
+
+@dataclass(kw_only=True)
+class SummarizeResultListener(ListenerQueue[FileMetadata]):
+  investigation: Investigation
+  client: Any
+
+  async def process(self, fm: FileMetadata):
+    await summarize_result(self.client, self.investigation)

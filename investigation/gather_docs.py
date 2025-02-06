@@ -36,7 +36,7 @@ Before we answer the question for real you must propose a likey set of AWS cli c
 
 Respond with a JSON object that conforms to the JSON schema {json.dumps(CommandPairs.model_json_schema(), indent=2)}."""
 
-  await GatherCommandPairs(client=client, messages=[usermsg(prompt)], investigation=investigation, model='o1-mini', response_format=CommandPairs).run()
+  await GatherCommandPairs(client=client, messages=[usermsg(prompt)], investigation=investigation, model='o3-mini', response_format=CommandPairs).run()
 
 
 ANSI_ESCAPE_RE = re.compile(r'(?:\x1B[@-Z\\-_]|\x1B\[0-?]*[ -/]*[@-~])')

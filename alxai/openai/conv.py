@@ -161,6 +161,11 @@ class Conv(ConvClassBase):
       # print('Using Perplexity model')
       model = 'sonar'
       response_format = NOT_GIVEN
+    elif 'x.ai' in str(self.client.base_url):
+      # print('Using XAI model')
+      model = 'grok-beta'
+      response_format = NOT_GIVEN
+      reasoning_effort = NOT_GIVEN
 
     response = await self.client.beta.chat.completions.parse(
       model=model, messages=self.messages, reasoning_effort=reasoning_effort, response_format=response_format, tools=get_tool_descriptions(self.tools), temperature=temperature

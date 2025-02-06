@@ -1,3 +1,4 @@
+import json
 import os
 from logging import Logger
 from typing import Iterable, List
@@ -36,7 +37,13 @@ class DefaultConvListener(ConvListener):
   def after_run(self, conv_id: ConvID, msg: ParsedChatCompletionMessage) -> None:
     with open(os.path.join(CURRENT_RUN_DIR, f'{conv_id}_{self.counter}_{msg.role}.txt'), 'w') as f:
       if isinstance(msg.content, str):
-        f.write(msg.content)
+        out = msg.content
+        try:
+          d = json.loads(msg.content)
+          out = json.dumps(d, indent=2)
+        except json.JSONDecodeError:
+          pass
+        f.write(out)
 
 
 class AgentPrintListener(ConvListener):

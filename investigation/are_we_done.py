@@ -1,7 +1,11 @@
+from dataclasses import dataclass
+from typing import Any
+
 from pydantic import BaseModel, Field
 
+from alxai.listener_queue import ListenerQueue
 from alxai.openai.conv import structured_oneshot, usermsg
-from investigation.investigation import Investigation
+from investigation.investigation import FileMetadata, Investigation
 
 
 class AreWeDoneModel(BaseModel):
@@ -9,22 +13,29 @@ class AreWeDoneModel(BaseModel):
 
 
 def prompt(investigation: Investigation):
-  return f"""# Here is the state of the investigation:
+  return f"""# Goal
+Determine if the provided user question can be answered definitively using the data we have gathered so far. If more data should be gathered to answer it then respond "false", otherwise respond "true". The user questions is "{investigation.prompt}".
 
+# Data gathered so far
 {investigation.summarize_files()}
 
-Do we have enough data to answer the following question, or should we continue to gather more data?
+# Dataframes acquired so far
+{investigation.summarize_data_frames()}
 
-"{investigation.prompt}"
+# Facts extracted so far
+{investigation.summarize_facts()}
 
+# Response
 Respond with a JSON object that conforms to the following JSON Schema: {AreWeDoneModel.model_json_schema()}
 """
 
 
-async def are_we_done_task(client, investigation: Investigation):
-  while True:
-    await investigation.new_files.wait()
-    done = await structured_oneshot(client, [usermsg(prompt(investigation))], model='gpt-4o-mini', response_format=AreWeDoneModel)
+@dataclass(kw_only=True)
+class AreWeDoneListener(ListenerQueue[FileMetadata]):
+  investigation: Investigation
+  client: Any
+
+  async def process(self, fm: FileMetadata):
+    done = await structured_oneshot(self.client, [usermsg(prompt(self.investigation))], model='o3-mini', response_format=AreWeDoneModel)
     if done.we_are_done:
-      investigation.done.set()
-      break
+      self.investigation.done.set()

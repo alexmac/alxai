@@ -66,6 +66,14 @@ def get_perplexity_client(org: str | None = None) -> openai.AsyncOpenAI:
   return openai.AsyncOpenAI(api_key=cfg.orgs[org].secret, base_url='https://api.perplexity.ai')
 
 
+def get_xai_client(org: str | None = None) -> openai.AsyncOpenAI:
+  cfg = _get_config('xai')
+  if not org:
+    org = list(cfg.orgs.keys())[0]
+
+  return openai.AsyncOpenAI(api_key=cfg.orgs[org].secret, base_url='https://api.x.ai/v1')
+
+
 async def get_embedding(oai: openai.AsyncOpenAI, json_data):
   input_text = json.dumps(json_data) if isinstance(json_data, dict) else json_data
 

@@ -6,12 +6,16 @@ import random
 import string
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Self
 
+import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
+from alxai.json import json_dumps
+from alxai.listener_queue import ListenerQueue
 from alxai.openai.conv import oneshot_conv, usermsg
 from alxai.openai.convclass import ConvClass
+from investigation.asset_graph import AssetGraph
 
 
 class FileMetadata(BaseModel):
@@ -37,10 +41,18 @@ async def summarize_file(client, reason: str, filepath: Path) -> str:
 # Full command output:
 {content}"""
 
-  response = await oneshot_conv(client, [usermsg(prompt)], model='o1-mini')
+  response = await oneshot_conv(client, [usermsg(prompt)], model='o3-mini')
 
   assert response is not None
   return response
+
+
+async def summarize_dataframe(client, filepath: Path) -> str:
+  df = pd.read_parquet(filepath)
+
+  df_summary = df.describe().to_dict()
+
+  return json_dumps(df_summary)
 
 
 OUTPUT_DIR = Path('output/investigations')
@@ -51,13 +63,19 @@ class Investigation(BaseModel):
   prompt: str
   summary: str = ''
   files: Dict[str, FileMetadata] = Field(default_factory=dict)
+  data_frames: Dict[str, FileMetadata] = Field(default_factory=dict)
   new_files: asyncio.Event = Field(default_factory=asyncio.Event, exclude=True)
+  new_data_frames: asyncio.Event = Field(default_factory=asyncio.Event, exclude=True)
   done: asyncio.Event = Field(default_factory=asyncio.Event, exclude=True)
   dir: Path = Field(exclude=True, default_factory=Path)
   client: Any = Field(exclude=True, default=None)
+  listeners: List[ListenerQueue] = Field(default_factory=list, exclude=True)
+  listener_tasks: List[asyncio.Task] = Field(default_factory=list, exclude=True)
+  assets: AssetGraph = Field(default_factory=lambda: AssetGraph(nodes={}, edges={}))
+  facts: List[str] = Field(default_factory=list)
 
   @classmethod
-  def create(cls, prompt: str, client: Any = None):
+  def create(cls, prompt: str, client: Any = None) -> Self:
     investigation = cls(prompt=prompt, client=client)
     investigation._create_random_directory()
     investigation._save_master_index()
@@ -85,6 +103,33 @@ class Investigation(BaseModel):
       elif metadata.file_type == 'txt':
         summary.append(f' - {metadata.reason_created}: {metadata.file_summary}')
     return '\n'.join(summary)
+
+  def summarize_facts(self) -> str:
+    return '\n'.join([f'- {fact}' for fact in self.facts])
+
+  def summarize_data_frames(self) -> str:
+    summary = []
+    for file, metadata in self.data_frames.items():
+      if metadata.file_type == 'parquet':
+        summary.append(f'- {metadata.reason_created}: {metadata.file_summary}')
+      else:
+        assert False, f'Unsupported file type: {metadata.file_type}'
+    return '\n'.join(summary)
+
+  def _new_file_added(self, file: FileMetadata):
+    try:
+      for listener in self.listeners:
+        listener.queue.put_nowait(file)
+    except asyncio.QueueShutDown:
+      pass
+    self.new_files.set()
+    self.new_files.clear()
+
+  def _new_data_frame_added(self, file: FileMetadata):
+    for listener in self.listeners:
+      listener.new_data_frame(file)
+    self.new_data_frames.set()
+    self.new_data_frames.clear()
 
   def file_dump(self) -> str:
     summary = []
@@ -118,8 +163,27 @@ class Investigation(BaseModel):
     metadata = FileMetadata(filename=filename, file_type=file_type, reason_created=reason, file_summary=await summarize_file(client, reason, filepath))
     self.files[filename] = metadata
     self._save_master_index()
-    self.new_files.set()
-    self.new_files.clear()
+    self._new_file_added(metadata)
+
+  async def add_data_frame(self, client, content: pd.DataFrame, df_name: str, reason: str = ''):
+    file_type = 'parquet'
+    print(f'🗄️ Adding dataframe {df_name} with type {file_type}')
+
+    filename = f'{df_name}.{file_type}'
+    filepath = self.dir / filename
+    content.to_parquet(filepath, compression='zstd')
+    metadata = FileMetadata(filename=filename, file_type=file_type, reason_created=reason, file_summary=await summarize_dataframe(client, filepath))
+    self.data_frames[df_name] = metadata
+    self._save_master_index()
+    self._new_data_frame_added(metadata)
+
+  def add_listener(self, listener: ListenerQueue):
+    self.listeners.append(listener)
+    self.listener_tasks.append(asyncio.create_task(listener.run()))
+
+  async def shutdown(self):
+    self.done.set()
+    await asyncio.gather(*self.listener_tasks)
 
 
 @dataclass(kw_only=True)

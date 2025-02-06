@@ -7,6 +7,7 @@ from openai import NOT_GIVEN, AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam, ParsedChatCompletionMessage
 from openai.types.chat.chat_completion_reasoning_effort import ChatCompletionReasoningEffort
 
+from alxai.base.context import get_conv_context
 from alxai.base.generic_conv import ConvClassBase
 from alxai.model_quirks import strip_code_prefix
 from alxai.openai.conv import parsedMsgToParam, usermsg
@@ -16,13 +17,13 @@ from alxai.openai.tool import ToolExecutor, get_tool_descriptions
 
 @dataclass(kw_only=True)
 class ConvClass[ResponseType](ConvClassBase):
-  client: AsyncOpenAI
   messages: List[ChatCompletionMessageParam]
   tools: List[ToolExecutor] | None = None
-  model: str = 'gpt-4o-mini'
+  client: AsyncOpenAI | None = None
+  model: str | None = None
   temperature: float | None = None
   response_format: Type[ResponseType] | None = None
-  reasoning_effort: ChatCompletionReasoningEffort = 'low'
+  reasoning_effort: ChatCompletionReasoningEffort = 'medium'
 
   def __post_init__(self):
     if not self._listeners:
@@ -69,41 +70,49 @@ class ConvClass[ResponseType](ConvClassBase):
       listener.after_run(self._conv_id, msg)
     self._listener_msg_idx = len(self.messages)
 
-  async def text_response(self, msg: str) -> Optional['ConvClass']:
+  async def text_response(self, msg: str) -> Optional[Self]:
     self._log.error(f'Conversation handler not implemented for text response: {msg}')
-    return None
+    return self
 
-  async def response(self, msg: ResponseType) -> Optional['ConvClass']:
+  async def response(self, msg: ResponseType) -> Optional[Self]:
     self._log.error(f'Conversation handler not implemented for {msg}')
-    return None
+    return self
 
-  async def failure(self, msg: ParsedChatCompletionMessage, finish_reason: str) -> Optional['ConvClass']:
+  async def failure(self, msg: ParsedChatCompletionMessage, finish_reason: str) -> Optional[Self]:
     self._log.error(f'Conversation ended unexpectedly with: {finish_reason}')
-    return None
+    return self
 
-  async def run(self) -> None:
+  async def run(self) -> Self:
     await self._before()
+
+    ctx = get_conv_context()
 
     temperature = self.temperature or NOT_GIVEN
     response_format = self.response_format or NOT_GIVEN
-    model = self.model
+    model = self.model or ctx.model
     reasoning_effort = NOT_GIVEN
 
     if model == 'o1-mini':
       response_format = NOT_GIVEN
       temperature = NOT_GIVEN
+      client = ctx.oai_client
     elif model == 'o1' or model == 'o3-mini':
       reasoning_effort = self.reasoning_effort
       temperature = NOT_GIVEN
+      client = ctx.oai_client
 
-    if 'deepseek' in str(self.client.base_url):
-      # print('Using DeepSeek model')
-      model = 'deepseek-reasoner'
+    if 'deepseek' in model:
+      client = ctx.ds_client
       response_format = NOT_GIVEN
-    elif 'perplexity' in str(self.client.base_url):
-      # print('Using Perplexity model')
-      model = 'sonar'
+    elif 'sonar' in model:
+      client = ctx.perplexity_client
       response_format = NOT_GIVEN
+    elif 'grok' in model:
+      client = ctx.xai_client
+      response_format = NOT_GIVEN
+      reasoning_effort = NOT_GIVEN
+
+    assert client is not None
 
     prev_role = None
     for m in self.messages:
@@ -112,13 +121,14 @@ class ConvClass[ResponseType](ConvClassBase):
       else:
         assert False
 
-    response = await self.client.beta.chat.completions.parse(
+    response = await client.beta.chat.completions.parse(
       model=model, messages=self.messages, reasoning_effort=reasoning_effort, response_format=response_format, tools=get_tool_descriptions(self.tools), temperature=temperature
     )
     choice = response.choices[0]
     assert choice
     nc = self.respond_via_msg(parsedMsgToParam(choice.message))
     await nc._after(choice.message)
+    run_again = False
 
     if choice.finish_reason == 'tool_calls':
       assert choice.message.tool_calls
@@ -136,16 +146,29 @@ class ConvClass[ResponseType](ConvClassBase):
           self._log.error(f'Tool call {tool_call_id} via tool {tool_call.function.name}({tool_call.function.arguments}) not handled')
           assert False
     elif choice.finish_reason in ['length', 'content_filter', 'function_call']:
-      nc = await self.failure(choice.message, choice.finish_reason)
+      rnc = await self.failure(choice.message, choice.finish_reason)
+      if rnc:
+        nc = rnc
+        run_again = True
     else:
       if choice.message.parsed is None:
         txt = strip_code_prefix(choice.message.content or '')
         if self.response_format is not None and self.response_format != NOT_GIVEN:
-          nc = await nc.response(self.response_format.model_validate_json(txt))  # type: ignore
+          rnc = await nc.response(self.response_format.model_validate_json(txt))  # type: ignore
+          if rnc:
+            nc = rnc
+            run_again = True
         else:
-          nc = await nc.text_response(txt)
+          rnc = await nc.text_response(txt)
+          if rnc:
+            nc = rnc
+            run_again = True
       else:
-        nc = await nc.response(choice.message.parsed)
+        rnc = await nc.response(choice.message.parsed)
+        if rnc:
+          nc = rnc
+          run_again = True
 
-    if nc:
+    if run_again:
       return await nc.run()
+    return nc

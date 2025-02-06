@@ -1,46 +1,7 @@
 from pathlib import Path
 
 from investigation.investigation import Investigation
-
-
-def generate_html_for_investigation(investigation_dir):
-  """Generate HTML content for a single investigation directory."""
-
-  # Read master index and parse with Pydantic
-  with open(investigation_dir / 'master_index.json', 'r') as f:
-    investigation = Investigation.model_validate_json(f.read(), strict=False)
-
-  html_content = [
-    '<head>',
-    f'<title>Investigation {investigation.prompt}</title>',
-    '<link href="https://cdn.jsdelivr.net/npm/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">',
-    '</head>',
-    '<body>',
-  ]
-  html_content.append('<div class="container mx-auto p-4">')
-  html_content.append(f'<h1 class="text-3xl font-bold mb-6">{investigation.prompt}</h1>')
-
-  html_content.append('<div class="space-y-4">')
-
-  for file_id, entry in investigation.files.items():
-    html_content.append('<div class="p-4 border rounded-lg shadow bg-white">')
-    html_content.append(f'<p class="font-bold">{entry.reason_created}</p>')
-
-    if entry.file_summary:
-      html_content.append(f'<p class="text-sm text-gray-500">{entry.file_summary}</p>')
-
-    html_content.append('</div>')
-
-  if investigation.summary:
-    html_content.append('<div class="p-4 border rounded-lg shadow bg-white">')
-    html_content.append('<p class="font-bold">Summary</p>')
-    html_content.append(f'<p class="text-sm text-gray-500 whitespace-pre-wrap">{investigation.summary}</p>')
-    html_content.append('</div>')
-
-  html_content.append('</div>')
-  html_content.append('</div>')
-
-  return '\n'.join(html_content)
+from investigation.summarize_as_html import save_investigation_html
 
 
 def main():
@@ -50,20 +11,14 @@ def main():
   # Process each investigation directory
   for investigation_dir in base_dir.iterdir():
     if investigation_dir.is_dir():
-      # Start HTML document for each investigation
-      html_parts = [
-        '<!DOCTYPE html>',
-        '<html lang="en">',
-        '<meta charset="UTF-8">',
-      ]
-      html_parts.append(generate_html_for_investigation(investigation_dir))
-      html_parts.extend(['</html>'])
+      # Read master index and parse with Pydantic
+      with open(investigation_dir / 'master_index.json', 'r') as f:
+        investigation = Investigation.model_validate_json(f.read(), strict=False)
+        investigation.dir = investigation_dir
 
-      # Write the HTML file for the current investigation
-      output_html = '\n'.join(html_parts)
+      # Generate and save HTML
       output_path = investigation_dir / 'index.html'
-      with open(output_path, 'w') as f:
-        f.write(output_html)
+      save_investigation_html(investigation, output_path)
 
 
 if __name__ == '__main__':
