@@ -22,19 +22,13 @@ dependencies = [
   "pandas>=2.2.3",
   "awscli>=1.37.15",
 ]
-dev-dependencies = [
-  "black",
-  "isort",
-  "pytest",
-  "pytest-cov",
-  "pytest-mock",
-  "ruff",
-  "twine",
-]
 
 [tool.setuptools]
 packages = [
   "alxai",
+  "alxai.anthropic",
+  "alxai.base",
+  "alxai.openai",
 ]
 
 [project.urls]

@@ -20,3 +20,7 @@
   }
 }
 ```
+
+# Publish
+uv build
+twine upload dist/*
