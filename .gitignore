@@ -1,4 +1,10 @@
-output
-__pycache__
 .aider*
 .DS_Store
+.tox
+__pycache__
+output
+.ruff_cache
+dist
+*.egg-info
+node_modules
+.venv

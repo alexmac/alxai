@@ -2,7 +2,14 @@
 name = "alxai"
 version = "0.1.0"
 readme = "README.md"
+authors = [{ name = "Alexander Macdonald", email = "alex@alexmac.cc" }]
+description = "Some AI wrappers"
 requires-python = ">=3.13"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
 dependencies = [
   "aiohttp~=3.9",
   "alxhttp",
@@ -24,6 +31,14 @@ dev-dependencies = [
   "ruff",
   "twine",
 ]
+
+[tool.setuptools]
+packages = [
+  "alxai",
+]
+
+[project.urls]
+Homepage = "https://github.com/alexmac/alxai"
 
 [tool.ruff]
 line-length = 200
