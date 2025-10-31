@@ -2,11 +2,12 @@ import asyncio
 import copy
 import json
 import logging
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from logging import Logger
-from typing import Awaitable, Callable, List, Optional, Type
+from typing import Any, Callable
 
-from openai import NOT_GIVEN, AsyncOpenAI, NotGiven
+from openai import AsyncOpenAI, Omit, omit
 from openai.types.chat import ChatCompletionAssistantMessageParam, ChatCompletionMessageParam, ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam, ParsedChatCompletionMessage
 from openai.types.chat.chat_completion_content_part_text_param import ChatCompletionContentPartTextParam
 from openai.types.chat.chat_completion_reasoning_effort import ChatCompletionReasoningEffort
@@ -15,8 +16,8 @@ from alxai.base.generic_conv import ConvClassBase, ConvID, ConvListener, generat
 from alxai.openai.listeners import AgentPrintListener, DefaultConvListener
 from alxai.openai.tool import ToolExecutor, get_tool_descriptions
 
-type MsgFailureHandler = Callable[['Conv', str, ParsedChatCompletionMessage], Awaitable[Optional[Conv]]]
-type MsgHandler = Callable[['Conv', ParsedChatCompletionMessage], Awaitable[Optional[Conv]]]
+type MsgFailureHandler = Callable[['Conv', str, ParsedChatCompletionMessage[Any]], Awaitable['Conv | None']]
+type MsgHandler = Callable[['Conv', ParsedChatCompletionMessage[Any]], Awaitable['Conv | None']]
 
 
 def usermsg(msg: str) -> ChatCompletionUserMessageParam:
@@ -43,28 +44,28 @@ def systemmsg(msg: str) -> ChatCompletionSystemMessageParam:
   )
 
 
-async def default_msg_handler(conv: 'Conv', message: ParsedChatCompletionMessage) -> Optional['Conv']:
+async def default_msg_handler(conv: 'Conv', message: ParsedChatCompletionMessage[Any]) -> 'Conv | None':
   return
 
 
-async def default_msg_failure_handler(conv: 'Conv', finish_reason: str, message: ParsedChatCompletionMessage) -> Optional['Conv']:
+async def default_msg_failure_handler(conv: 'Conv', finish_reason: str, message: ParsedChatCompletionMessage[Any]) -> 'Conv | None':
   conv._log.error(f'Conversation ended unexpectedly with: {finish_reason}')
   return
 
 
-def parsedMsgToParam(msg: ParsedChatCompletionMessage):
-  return ChatCompletionAssistantMessageParam(role=msg.role, content=msg.content, tool_calls=msg.tool_calls)  # type: ignore
+def parsedMsgToParam(msg: ParsedChatCompletionMessage[Any]) -> ChatCompletionAssistantMessageParam:
+  return ChatCompletionAssistantMessageParam(role=msg.role, content=msg.content, tool_calls=msg.tool_calls)  # pyright: ignore[reportArgumentType]
 
 
 @dataclass
 class Conv(ConvClassBase):
   client: AsyncOpenAI
-  messages: List[ChatCompletionMessageParam]
+  messages: list[ChatCompletionMessageParam]
   msg_handler: MsgHandler
-  tools: List[ToolExecutor] | NotGiven
+  tools: list[ToolExecutor] | Omit
   model: str
-  temperature: float | NotGiven
-  response_format: Type | NotGiven
+  temperature: float | Omit
+  response_format: type | Omit
   msg_failure_handler: MsgFailureHandler = default_msg_failure_handler
   reasoning_effort: ChatCompletionReasoningEffort = 'medium'
 
@@ -73,7 +74,7 @@ class Conv(ConvClassBase):
       self._listeners.append(DefaultConvListener(self._log))
       self._listeners.append(AgentPrintListener(self._log))
 
-  def clone(self, msgs: List[ChatCompletionMessageParam]) -> 'Conv':
+  def clone(self, msgs: list[ChatCompletionMessageParam]) -> 'Conv':
     return Conv(
       client=self.client,
       messages=msgs,
@@ -91,8 +92,8 @@ class Conv(ConvClassBase):
       tools=self.tools,
     )
 
-  def _clone_msgs(self) -> List[ChatCompletionMessageParam]:
-    msgs: List[ChatCompletionMessageParam] = copy.deepcopy(self.messages)
+  def _clone_msgs(self) -> list[ChatCompletionMessageParam]:
+    msgs: list[ChatCompletionMessageParam] = copy.deepcopy(self.messages)
     for m in msgs:
       tool_calls = m.get('tool_calls', [])
       if 'tool_calls' in m and tool_calls == []:
@@ -101,12 +102,12 @@ class Conv(ConvClassBase):
 
   def append(self, msg: ChatCompletionMessageParam) -> 'Conv':
     assert msg is not None
-    msgs: List[ChatCompletionMessageParam] = self._clone_msgs()
+    msgs: list[ChatCompletionMessageParam] = self._clone_msgs()
     msgs.append(msg)
     return self.clone(msgs)
 
-  def respond(self, msg: str, msg_handler: MsgHandler | None = None, response_format: Type | None = None) -> 'Conv':
-    msgs: List[ChatCompletionMessageParam] = self._clone_msgs()
+  def respond(self, msg: str, msg_handler: MsgHandler | None = None, response_format: type | None = None) -> 'Conv':
+    msgs: list[ChatCompletionMessageParam] = self._clone_msgs()
     msgs.append(usermsg(msg))
     nc = self.clone(msgs)
     if msg_handler:
@@ -120,19 +121,19 @@ class Conv(ConvClassBase):
       listener.before_run(self._conv_id, self.messages[self._listener_msg_idx :])
     self._listener_msg_idx = len(self.messages)
 
-  async def _after(self, msg: ParsedChatCompletionMessage):
+  async def _after(self, msg: ParsedChatCompletionMessage[Any]):
     for listener in self._listeners:
       listener.after_run(self._conv_id, msg)
     self._listener_msg_idx = len(self.messages)
 
-  async def get_parsed_response[T](self, message: ParsedChatCompletionMessage, response_format: Type[T] | None) -> T | str | None:
+  async def get_parsed_response[T](self, message: ParsedChatCompletionMessage[Any], response_format: type[T] | None) -> T | str | None:
     if message.parsed is None:
       txt = message.content or ''
       if txt.startswith('```json'):
         txt = txt[7:-3]
       txt = txt.strip()
-      if response_format is not None and response_format != NOT_GIVEN:
-        return response_format.model_validate_json(txt)  # type: ignore
+      if response_format is not None and response_format != omit:
+        return response_format.model_validate_json(txt)  # type: ignore  # pyright: ignore[reportAttributeAccessIssue]
       else:
         return txt
     else:
@@ -141,31 +142,31 @@ class Conv(ConvClassBase):
   async def run(self) -> None:
     await self._before()
 
-    temperature = self.temperature or NOT_GIVEN
+    temperature = self.temperature or omit
     response_format = self.response_format
     model = self.model
-    reasoning_effort = NOT_GIVEN
+    reasoning_effort = omit
 
     if model == 'o1-mini':
-      response_format = NOT_GIVEN
-      temperature = NOT_GIVEN
+      response_format = omit
+      temperature = omit
     elif model == 'o1' or model == 'o3-mini':
       reasoning_effort = self.reasoning_effort
-      temperature = NOT_GIVEN
+      temperature = omit
 
     if 'deepseek' in str(self.client.base_url):
       # print('Using DeepSeek model')
       model = 'deepseek-reasoner'
-      response_format = NOT_GIVEN
+      response_format = omit
     elif 'perplexity' in str(self.client.base_url):
       # print('Using Perplexity model')
       model = 'sonar'
-      response_format = NOT_GIVEN
+      response_format = omit
     elif 'x.ai' in str(self.client.base_url):
       # print('Using XAI model')
       model = 'grok-beta'
-      response_format = NOT_GIVEN
-      reasoning_effort = NOT_GIVEN
+      response_format = omit
+      reasoning_effort = omit
 
     response = await self.client.beta.chat.completions.parse(
       model=model, messages=self.messages, reasoning_effort=reasoning_effort, response_format=response_format, tools=get_tool_descriptions(self.tools), temperature=temperature
@@ -202,17 +203,17 @@ class Conv(ConvClassBase):
 async def start_conv(
   client: AsyncOpenAI,
   msg_handler: MsgHandler,
-  messages: List[ChatCompletionMessageParam],
-  tools: List[ToolExecutor] | None = None,
-  sem: Optional[asyncio.Semaphore] = None,
-  log: Optional[Logger] = None,
-  conv_id: Optional[ConvID] = None,
+  messages: list[ChatCompletionMessageParam],
+  tools: list[ToolExecutor] | None = None,
+  sem: asyncio.Semaphore | None = None,
+  log: Logger | None = None,
+  conv_id: ConvID | None = None,
   model: str = 'gpt-4o',
   reasoning_effort: ChatCompletionReasoningEffort = 'medium',
-  temperature: float | NotGiven = NOT_GIVEN,
+  temperature: float | Omit = omit,
   msg_failure_handler: MsgFailureHandler = default_msg_failure_handler,
-  listeners: Optional[List[ConvListener]] = None,
-  response_format: Type | NotGiven | None = None,
+  listeners: list[ConvListener] | None = None,
+  response_format: type | Omit | None = None,
   debug: bool = True,
 ):
   log = log or logging.getLogger()
@@ -228,25 +229,25 @@ async def start_conv(
     msg_failure_handler=msg_failure_handler,
     _conv_id=conv_id or generate_conv_id(),
     _listeners=listeners or [],
-    response_format=response_format if response_format is not None else NOT_GIVEN,
-    tools=tools or NOT_GIVEN,
+    response_format=response_format if response_format is not None else omit,
+    tools=tools or omit,
   )
   await c.run()
 
 
 async def oneshot_conv[ResponseType](
   client: AsyncOpenAI,
-  messages: List[ChatCompletionMessageParam],
-  response_format: Type[ResponseType] | None = None,
+  messages: list[ChatCompletionMessageParam],
+  response_format: type[ResponseType] | None = None,
   reasoning_effort: ChatCompletionReasoningEffort = 'medium',
-  tools: List[ToolExecutor] | NotGiven | None = None,
-  sem: Optional[asyncio.Semaphore] = None,
-  log: Optional[Logger] = None,
-  conv_id: Optional[ConvID] = None,
+  tools: list[ToolExecutor] | Omit | None = None,
+  sem: asyncio.Semaphore | None = None,
+  log: Logger | None = None,
+  conv_id: ConvID | None = None,
   model: str = 'gpt-4o',
-  temperature: float | NotGiven = NOT_GIVEN,
+  temperature: float | Omit = omit,
   msg_failure_handler: MsgFailureHandler = default_msg_failure_handler,
-  listeners: Optional[List[ConvListener]] = None,
+  listeners: list[ConvListener] | None = None,
   debug: bool = True,
 ) -> ResponseType | str | None:
   log = log or logging.getLogger()
@@ -268,8 +269,8 @@ async def oneshot_conv[ResponseType](
     msg_failure_handler=msg_failure_handler,
     _conv_id=conv_id or generate_conv_id(),
     _listeners=listeners or [],
-    response_format=response_format if response_format is not None else NOT_GIVEN,
-    tools=tools or NOT_GIVEN,
+    response_format=response_format if response_format is not None else omit,
+    tools=tools or omit,
   )
   await c.run()
 
@@ -278,17 +279,17 @@ async def oneshot_conv[ResponseType](
 
 async def structured_oneshot[ResponseType](
   client: AsyncOpenAI,
-  messages: List[ChatCompletionMessageParam],
-  response_format: Type[ResponseType],
+  messages: list[ChatCompletionMessageParam],
+  response_format: type[ResponseType],
   reasoning_effort: ChatCompletionReasoningEffort = 'medium',
-  tools: List[ToolExecutor] | NotGiven | None = None,
-  sem: Optional[asyncio.Semaphore] = None,
-  log: Optional[Logger] = None,
-  conv_id: Optional[ConvID] = None,
+  tools: list[ToolExecutor] | Omit | None = None,
+  sem: asyncio.Semaphore | None = None,
+  log: Logger | None = None,
+  conv_id: ConvID | None = None,
   model: str = 'gpt-4o',
-  temperature: float | NotGiven = NOT_GIVEN,
+  temperature: float | Omit = omit,
   msg_failure_handler: MsgFailureHandler = default_msg_failure_handler,
-  listeners: Optional[List[ConvListener]] = None,
+  listeners: list[ConvListener] | None = None,
   debug: bool = True,
 ) -> ResponseType:
   log = log or logging.getLogger()
@@ -311,7 +312,7 @@ async def structured_oneshot[ResponseType](
     _conv_id=conv_id or generate_conv_id(),
     _listeners=listeners or [],
     response_format=response_format,
-    tools=tools or NOT_GIVEN,
+    tools=tools or omit,
   )
   await c.run()
 

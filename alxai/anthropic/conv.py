@@ -13,6 +13,8 @@ from uuid import UUID
 import anthropic
 from anthropic.types import Message, MessageParam, ModelParam, TextBlockParam
 
+from alxai.openai.tool import ToolExecutor
+
 type MsgFailureHandler = Callable[['Conv', str, Message], Awaitable[Conv | None]]
 type MsgHandler = Callable[['Conv', Message], Awaitable[Conv | None]]
 
@@ -41,11 +43,11 @@ def systemmsg(msg: str) -> MessageParam:
   )
 
 
-async def default_msg_handler(conv: 'Conv', message: Message) -> Conv | None:
+async def default_msg_handler(conv: 'Conv', message: Message) -> 'Conv | None':
   return
 
 
-async def default_msg_failure_handler(conv: 'Conv', finish_reason: str, message: Message) -> Conv | None:
+async def default_msg_failure_handler(conv: 'Conv', finish_reason: str, message: Message) -> 'Conv | None':
   conv._log.error(f'Conversation ended unexpectedly with: {finish_reason}')
   return
 
@@ -97,7 +99,7 @@ class Conv:
   client: anthropic.AsyncAnthropic
   messages: list[MessageParam]
   msg_handler: MsgHandler
-  tools: list | None
+  tools: list[ToolExecutor] | None
   _sem: asyncio.Semaphore
   _log: Logger
   _conv_id: UUID
@@ -163,14 +165,14 @@ class Conv:
 
   async def get_parsed_response[T](self, message: Message, response_format: type[T] | None) -> T | str | None:
     assert len(message.content) == 1
-    txt = message.content[0].text or ''  # type: ignore
+    txt = message.content[0].text or ''  # type: ignore  # pyright: ignore[reportAttributeAccessIssue]
     if txt.startswith('```json'):
       txt = txt[7:-3]
     txt = txt.strip()
 
     if response_format is not None:
       try:
-        return response_format.model_validate_json(txt)  # type: ignore
+        return response_format.model_validate_json(txt)  # type: ignore  # pyright: ignore[reportAttributeAccessIssue]
       except Exception as e:
         raise StructuredOuputError(txt) from e
     else:
@@ -202,7 +204,7 @@ async def oneshot_conv[ResponseType](
   messages: list[MessageParam],
   response_format: type[ResponseType] | None = None,
   reasoning_effort: str = 'medium',
-  tools: list | None = None,
+  tools: list[ToolExecutor] | None = None,
   sem: asyncio.Semaphore | None = None,
   log: Logger | None = None,
   conv_id: UUID | None = None,

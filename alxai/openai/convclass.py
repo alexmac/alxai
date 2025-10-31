@@ -1,9 +1,9 @@
 import copy
 import json
 from dataclasses import dataclass
-from typing import List, Optional, Self, Type
+from typing import Any, Self
 
-from openai import NOT_GIVEN, AsyncOpenAI
+from openai import AsyncOpenAI, omit
 from openai.types.chat import ChatCompletionMessageParam, ParsedChatCompletionMessage
 from openai.types.chat.chat_completion_reasoning_effort import ChatCompletionReasoningEffort
 
@@ -17,12 +17,12 @@ from alxai.openai.tool import ToolExecutor, get_tool_descriptions
 
 @dataclass(kw_only=True)
 class ConvClass[ResponseType](ConvClassBase):
-  messages: List[ChatCompletionMessageParam]
-  tools: List[ToolExecutor] | None = None
+  messages: list[ChatCompletionMessageParam]
+  tools: list[ToolExecutor] | None = None
   client: AsyncOpenAI | None = None
   model: str | None = None
   temperature: float | None = None
-  response_format: Type[ResponseType] | None = None
+  response_format: type[ResponseType] | None = None
   reasoning_effort: ChatCompletionReasoningEffort = 'medium'
 
   def __post_init__(self):
@@ -30,23 +30,23 @@ class ConvClass[ResponseType](ConvClassBase):
       self._listeners.append(DefaultConvListener(self._log))
       self._listeners.append(AgentPrintListener(self._log))
 
-  def _copy_msgs(self) -> List[ChatCompletionMessageParam]:
-    msgs: List[ChatCompletionMessageParam] = copy.deepcopy(self.messages)
+  def _copy_msgs(self) -> list[ChatCompletionMessageParam]:
+    msgs: list[ChatCompletionMessageParam] = copy.deepcopy(self.messages)
     for m in msgs:
       tool_calls = m.get('tool_calls', [])
       if 'tool_calls' in m and tool_calls == []:
         del m['tool_calls']
     return msgs
 
-  def _append_msg(self, msg: ChatCompletionMessageParam) -> List[ChatCompletionMessageParam]:
+  def _append_msg(self, msg: ChatCompletionMessageParam) -> list[ChatCompletionMessageParam]:
     assert msg is not None
-    msgs: List[ChatCompletionMessageParam] = self._copy_msgs()
+    msgs: list[ChatCompletionMessageParam] = self._copy_msgs()
     msgs.append(msg)
     return msgs
 
   @classmethod
-  def respond_to(cls, conv: 'ConvClass', msg: str) -> 'ConvClass':
-    msgs: List[ChatCompletionMessageParam] = conv._append_msg(usermsg(msg))
+  def respond_to(cls, conv: Self, msg: str) -> Self:
+    msgs: list[ChatCompletionMessageParam] = conv._append_msg(usermsg(msg))
     nc = copy.copy(conv)
     nc.messages = msgs
     return nc
@@ -55,7 +55,7 @@ class ConvClass[ResponseType](ConvClassBase):
     return self.respond_via_msg(usermsg(msg))
 
   def respond_via_msg(self, msg: ChatCompletionMessageParam) -> Self:
-    msgs: List[ChatCompletionMessageParam] = self._append_msg(msg)
+    msgs: list[ChatCompletionMessageParam] = self._append_msg(msg)
     nc = copy.copy(self)
     nc.messages = msgs
     return nc
@@ -65,20 +65,20 @@ class ConvClass[ResponseType](ConvClassBase):
       listener.before_run(self._conv_id, self.messages[self._listener_msg_idx :])
     self._listener_msg_idx = len(self.messages)
 
-  async def _after(self, msg: ParsedChatCompletionMessage):
+  async def _after(self, msg: ParsedChatCompletionMessage[Any]):
     for listener in self._listeners:
       listener.after_run(self._conv_id, msg)
     self._listener_msg_idx = len(self.messages)
 
-  async def text_response(self, msg: str) -> Optional[Self]:
+  async def text_response(self, msg: str) -> Self | None:
     self._log.error(f'Conversation handler not implemented for text response: {msg}')
     return self
 
-  async def response(self, msg: ResponseType) -> Optional[Self]:
+  async def response(self, msg: ResponseType) -> Self | None:
     self._log.error(f'Conversation handler not implemented for {msg}')
     return self
 
-  async def failure(self, msg: ParsedChatCompletionMessage, finish_reason: str) -> Optional[Self]:
+  async def failure(self, msg: ParsedChatCompletionMessage[Any], finish_reason: str) -> Self | None:
     self._log.error(f'Conversation ended unexpectedly with: {finish_reason}')
     return self
 
@@ -87,30 +87,31 @@ class ConvClass[ResponseType](ConvClassBase):
 
     ctx = get_conv_context()
 
-    temperature = self.temperature or NOT_GIVEN
-    response_format = self.response_format or NOT_GIVEN
+    temperature = self.temperature or omit
+    response_format = self.response_format or omit
     model = self.model or ctx.model
-    reasoning_effort = NOT_GIVEN
+    reasoning_effort = omit
 
+    client = None
     if model == 'o1-mini':
-      response_format = NOT_GIVEN
-      temperature = NOT_GIVEN
+      response_format = omit
+      temperature = omit
       client = ctx.oai_client
     elif model == 'o1' or model == 'o3-mini':
       reasoning_effort = self.reasoning_effort
-      temperature = NOT_GIVEN
+      temperature = omit
       client = ctx.oai_client
 
     if 'deepseek' in model:
       client = ctx.ds_client
-      response_format = NOT_GIVEN
+      response_format = omit
     elif 'sonar' in model:
       client = ctx.perplexity_client
-      response_format = NOT_GIVEN
+      response_format = omit
     elif 'grok' in model:
       client = ctx.xai_client
-      response_format = NOT_GIVEN
-      reasoning_effort = NOT_GIVEN
+      response_format = omit
+      reasoning_effort = omit
 
     assert client is not None
 
@@ -153,8 +154,8 @@ class ConvClass[ResponseType](ConvClassBase):
     else:
       if choice.message.parsed is None:
         txt = strip_code_prefix(choice.message.content or '')
-        if self.response_format is not None and self.response_format != NOT_GIVEN:
-          rnc = await nc.response(self.response_format.model_validate_json(txt))  # type: ignore
+        if self.response_format is not None and self.response_format != omit:
+          rnc = await nc.response(self.response_format.model_validate_json(txt))  # pyright: ignore[reportUnknownArgumentType, reportAttributeAccessIssue]
           if rnc:
             nc = rnc
             run_again = True

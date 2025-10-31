@@ -67,7 +67,7 @@ async def oneshot[ResponseType](msg: str, response_format: type[ResponseType] | 
         client,
         [usermsg(msg)],
         response_format=response_format,
-        reasoning_effort=reasoning_effort,  # type: ignore
+        reasoning_effort=reasoning_effort,  # pyright: ignore[reportArgumentType]
         model=ctx.model,
       )
   except Exception:
