@@ -8,3 +8,5 @@ dist
 *.egg-info
 node_modules
 .venv
+typings
+*.pyi

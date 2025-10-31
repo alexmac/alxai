@@ -1,6 +1,6 @@
 [project]
 name = "alxai"
-version = "0.1.0"
+version = "0.1.2"
 readme = "README.md"
 authors = [{ name = "Alexander Macdonald", email = "alex@alexmac.cc" }]
 description = "Some AI wrappers"
@@ -13,15 +13,18 @@ classifiers = [
 dependencies = [
   "aiohttp~=3.9",
   "alxhttp",
-  "tenacity",
-  "openai",
   "anthropic>=0.45.0",
   "jsonschema>=4.23.0",
-  "tiktoken>=0.8.0",
-  "pyarrow>=19.0.0",
+  "openai",
   "pandas>=2.2.3",
-  "awscli>=1.37.15",
+  "pyarrow>=19.0.0",
+  "tenacity",
+  "tiktoken>=0.8.0",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = [
@@ -44,6 +47,11 @@ quote-style = "single"
 indent-style = "space"
 docstring-code-format = true
 
+[tool.isort]
+profile = "black"
+indent = "  "
+line_length = 200
+
 [tool.pytest.ini_options]
 log_file_level = "INFO"
 log_file = "output/pytest/logs.txt"
@@ -65,3 +73,11 @@ output = "output/coverage/coverage.xml"
 
 [tool.pyright]
 ignore = ["output"]
+reportAny = false
+reportExplicitAny = false
+reportUnusedCallResult = false # I want to enabled this, but the IO "write" method hiyts this case
+reportConstantRedefinition = false # reports glopbals as always constant, not sure i agree
+reportUnknownVariableType = false # too noisy when walking dicts from json.loads
+reportUnknownMemberType = false # too noisy when walking dicts from json.loads
+reportPrivateUsage = false
+reportUnusedParameter = false
