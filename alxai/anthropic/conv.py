@@ -3,17 +3,18 @@ import copy
 import logging
 import uuid
 from abc import abstractmethod
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from logging import Logger
 from time import time
-from typing import Awaitable, Callable, List, Optional, Type
+from typing import Callable
 from uuid import UUID
 
 import anthropic
 from anthropic.types import Message, MessageParam, ModelParam, TextBlockParam
 
-type MsgFailureHandler = Callable[['Conv', str, Message], Awaitable[Optional[Conv]]]
-type MsgHandler = Callable[['Conv', Message], Awaitable[Optional[Conv]]]
+type MsgFailureHandler = Callable[['Conv', str, Message], Awaitable[Conv | None]]
+type MsgHandler = Callable[['Conv', Message], Awaitable[Conv | None]]
 
 
 def usermsg(msg: str) -> MessageParam:
@@ -40,11 +41,11 @@ def systemmsg(msg: str) -> MessageParam:
   )
 
 
-async def default_msg_handler(conv: 'Conv', message: Message) -> Optional['Conv']:
+async def default_msg_handler(conv: 'Conv', message: Message) -> Conv | None:
   return
 
 
-async def default_msg_failure_handler(conv: 'Conv', finish_reason: str, message: Message) -> Optional['Conv']:
+async def default_msg_failure_handler(conv: 'Conv', finish_reason: str, message: Message) -> Conv | None:
   conv._log.error(f'Conversation ended unexpectedly with: {finish_reason}')
   return
 
@@ -60,7 +61,7 @@ class ConvListener:
     self.log: Logger = log
 
   @abstractmethod
-  def before_run(self, conv_id: UUID, msgs: List[MessageParam]) -> None:
+  def before_run(self, conv_id: UUID, msgs: list[MessageParam]) -> None:
     pass
 
   @abstractmethod
@@ -73,7 +74,7 @@ class DefaultConvListener(ConvListener):
     super().__init__(log)
     self.start_time: float = 0
 
-  def before_run(self, conv_id: UUID, msgs: List[MessageParam]) -> None:
+  def before_run(self, conv_id: UUID, msgs: list[MessageParam]) -> None:
     self.start_time = time()
     for msg in msgs:
       self.log.info(f'{msg["role"]}: {msg.get("content")}')
@@ -87,27 +88,28 @@ class StructuredOuputError(Exception):
   raw: str
 
   def __init__(self, raw: str):
+    super().__init__()
     self.raw = raw
 
 
 @dataclass
 class Conv:
   client: anthropic.AsyncAnthropic
-  messages: List[MessageParam]
+  messages: list[MessageParam]
   msg_handler: MsgHandler
-  tools: List | None
+  tools: list | None
   _sem: asyncio.Semaphore
   _log: Logger
   _conv_id: UUID
   model: ModelParam
   temperature: float
-  response_format: Type | None
+  response_format: type | None
   msg_failure_handler: MsgFailureHandler = default_msg_failure_handler
   reasoning_effort: str = 'medium'
   _listener_msg_idx: int = 0
-  _listener: Optional[ConvListener] = None
+  _listener: ConvListener | None = None
 
-  def clone(self, msgs: List[MessageParam]) -> 'Conv':
+  def clone(self, msgs: list[MessageParam]) -> 'Conv':
     return Conv(
       client=self.client,
       messages=msgs,
@@ -125,8 +127,8 @@ class Conv:
       tools=self.tools,
     )
 
-  def _clone_msgs(self) -> List[MessageParam]:
-    msgs: List[MessageParam] = copy.deepcopy(self.messages)
+  def _clone_msgs(self) -> list[MessageParam]:
+    msgs: list[MessageParam] = copy.deepcopy(self.messages)
     for m in msgs:
       tool_calls = m.get('tool_calls', [])
       if 'tool_calls' in m and tool_calls == []:
@@ -135,12 +137,12 @@ class Conv:
 
   def append(self, msg: MessageParam) -> 'Conv':
     assert msg is not None
-    msgs: List[MessageParam] = self._clone_msgs()
+    msgs: list[MessageParam] = self._clone_msgs()
     msgs.append(msg)
     return self.clone(msgs)
 
-  def respond(self, msg: str, msg_handler: MsgHandler | None = None, response_format: Type | None = None) -> 'Conv':
-    msgs: List[MessageParam] = self._clone_msgs()
+  def respond(self, msg: str, msg_handler: MsgHandler | None = None, response_format: type | None = None) -> 'Conv':
+    msgs: list[MessageParam] = self._clone_msgs()
     msgs.append(usermsg(msg))
     nc = self.clone(msgs)
     if msg_handler:
@@ -159,7 +161,7 @@ class Conv:
       self._listener.after_run(self._conv_id, msg)
       self._listener_msg_idx = len(self.messages)
 
-  async def get_parsed_response[T](self, message: Message, response_format: Type[T] | None) -> T | str | None:
+  async def get_parsed_response[T](self, message: Message, response_format: type[T] | None) -> T | str | None:
     assert len(message.content) == 1
     txt = message.content[0].text or ''  # type: ignore
     if txt.startswith('```json'):
@@ -197,18 +199,18 @@ class Conv:
 
 async def oneshot_conv[ResponseType](
   client: anthropic.AsyncAnthropic,
-  messages: List[MessageParam],
-  response_format: Type[ResponseType] | None = None,
+  messages: list[MessageParam],
+  response_format: type[ResponseType] | None = None,
   reasoning_effort: str = 'medium',
-  tools: List | None = None,
-  sem: Optional[asyncio.Semaphore] = None,
-  log: Optional[Logger] = None,
-  conv_id: Optional[UUID] = None,
+  tools: list | None = None,
+  sem: asyncio.Semaphore | None = None,
+  log: Logger | None = None,
+  conv_id: UUID | None = None,
   model: ModelParam = 'gpt-4o',
   temperature: float = 1,
   msg_failure_handler: MsgFailureHandler = default_msg_failure_handler,
   listener_msg_idx: int = 0,
-  listener: Optional[ConvListener] = None,
+  listener: ConvListener | None = None,
   debug: bool = True,
 ) -> ResponseType | str | None:
   log = log or logging.getLogger()

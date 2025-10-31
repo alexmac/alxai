@@ -2,6 +2,7 @@ import asyncio
 import logging
 import random
 import sys
+from typing import Any
 
 from openai.types.chat import ChatCompletionToolMessageParam, ParsedChatCompletionMessage
 from pydantic import BaseModel, Field
@@ -43,7 +44,7 @@ class LinearEquationSolver(ToolExecutor):
     )
 
 
-async def response_handler(conv: Conv, message: ParsedChatCompletionMessage):
+async def response_handler(conv: Conv, message: ParsedChatCompletionMessage[Any]):
   return None
 
 

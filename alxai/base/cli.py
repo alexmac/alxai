@@ -1,12 +1,11 @@
 import subprocess
-from typing import List, Tuple
 
 
 class CliError(Exception):
   pass
 
 
-def invoke_cli(args: List[str], expect_first_arg: str = '', unquote: bool = True) -> Tuple[subprocess.CompletedProcess[str], List[str]]:
+def invoke_cli(args: list[str], expect_first_arg: str = '', unquote: bool = True) -> tuple[subprocess.CompletedProcess[str], list[str]]:
   if expect_first_arg and args[0] != expect_first_arg:
     args = [expect_first_arg] + args
 
@@ -22,7 +21,7 @@ def invoke_cli(args: List[str], expect_first_arg: str = '', unquote: bool = True
   return subprocess.run(args, capture_output=True, text=True), args
 
 
-async def run_cli(args: List[str], expect_first_arg: str = '') -> Tuple[str, List[str]]:
+async def run_cli(args: list[str], expect_first_arg: str = '') -> tuple[str, list[str]]:
   try:
     result, actual_args = invoke_cli(args, expect_first_arg=expect_first_arg)
     retcode, stdout, stderr = result.returncode, result.stdout, result.stderr

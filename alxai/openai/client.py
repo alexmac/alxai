@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Dict
+from typing import Any
 
 import openai
 import pydantic
@@ -13,12 +13,12 @@ class OpenAICredentials(pydantic.BaseModel):
 
 
 class OpenAIConfig(pydantic.BaseModel):
-  orgs: Dict[str, OpenAICredentials]
+  orgs: dict[str, OpenAICredentials]
 
 
-home_dir = Path(os.path.expanduser('~'))
+home_dir: Path = Path(os.path.expanduser('~'))
 
-_configs: Dict[str, OpenAIConfig] = {}
+_configs: dict[str, OpenAIConfig] = {}
 
 
 def _get_config(cfg: str = 'open_ai') -> OpenAIConfig:
@@ -74,7 +74,7 @@ def get_xai_client(org: str | None = None) -> openai.AsyncOpenAI:
   return openai.AsyncOpenAI(api_key=cfg.orgs[org].secret, base_url='https://api.x.ai/v1')
 
 
-async def get_embedding(oai: openai.AsyncOpenAI, json_data):
+async def get_embedding(oai: openai.AsyncOpenAI, json_data: dict[str, Any] | str) -> openai.types.create_embedding_response.CreateEmbeddingResponse:
   input_text = json.dumps(json_data) if isinstance(json_data, dict) else json_data
 
   response = await oai.embeddings.create(

@@ -3,6 +3,7 @@ import inspect
 import json
 import os
 import pickle
+from typing import Any, Callable
 
 CACHE_DIR = ''
 
@@ -26,7 +27,7 @@ def is_pickleable(x) -> bool:
     return False
 
 
-def memoize(func):
+def memoize(func: Callable[..., Any]) -> Callable[..., Any]:
   async def wrapper(*args, **kwargs):
     source_code = inspect.getsource(func)
     func_key = hashlib.sha256(source_code.encode()).hexdigest()

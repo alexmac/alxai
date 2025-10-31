@@ -1,6 +1,5 @@
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Type
 
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
@@ -40,7 +39,7 @@ def set_conv_context(ctx: ConvContext):
   conv_context.set(ctx)
 
 
-async def oneshot[ResponseType](msg: str, response_format: Type[ResponseType] | None = None) -> ResponseType | str | None:
+async def oneshot[ResponseType](msg: str, response_format: type[ResponseType] | None = None) -> ResponseType | str | None:
   ctx = get_conv_context()
 
   reasoning_effort = ctx.reasoning_effort if isinstance(ctx.reasoning_effort, str) else 'medium'

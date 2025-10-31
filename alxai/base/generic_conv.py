@@ -4,7 +4,7 @@ import random
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from logging import Logger
-from typing import Any, List
+from typing import Any
 
 type ConvID = str
 
@@ -16,7 +16,7 @@ class ConvListener:
     self.log: Logger = log
 
   @abstractmethod
-  def before_run(self, conv_id: ConvID, msgs: List) -> None:
+  def before_run(self, conv_id: ConvID, msgs: list[Any]) -> None:
     pass
 
   @abstractmethod
@@ -34,4 +34,4 @@ class ConvClassBase:
   _sem: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(4))
   _conv_id: ConvID = field(default_factory=generate_conv_id)
   _listener_msg_idx: int = 0
-  _listeners: List[ConvListener] = field(default_factory=lambda: [])
+  _listeners: list[ConvListener] = field(default_factory=lambda: [])

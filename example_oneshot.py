@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import sys
-from typing import List
 
 from pydantic import BaseModel
 
@@ -15,7 +14,7 @@ class SecurityTask(BaseModel):
 
 
 class TaskProposals(BaseModel):
-  tasks: List[SecurityTask]
+  tasks: list[SecurityTask]
 
 
 async def main():

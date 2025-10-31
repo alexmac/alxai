@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import sys
-from typing import List
 
 from openai.types.chat import ParsedChatCompletionMessage
 from pydantic import BaseModel
@@ -16,7 +15,7 @@ class SecurityTask(BaseModel):
 
 
 class TaskProposals(BaseModel):
-  tasks: List[SecurityTask]
+  tasks: list[SecurityTask]
 
 
 class TaskDetail(BaseModel):
